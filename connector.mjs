@@ -4589,11 +4589,11 @@ function createAgentTransport({ origin = HEMING_ORIGIN, fetchImpl } = {}) {
     request.once("error", reject);
     request.end(options.body);
   }));
-  const api = async (path, { token, body, method = body ? "POST" : "GET", signal } = {}) => {
+  const api = async (path, { token: token2, body, method = body ? "POST" : "GET", signal } = {}) => {
     if (!path.startsWith("/api/v1/")) throw Error("INVALID_AGENT_API_PATH");
     const response = await transportFetch(origin + path, { method, redirect: "error", headers: {
       "Content-Type": "application/json",
-      ...token ? { "x-device-token": token } : {}
+      ...token2 ? { "x-device-token": token2 } : {}
     }, ...body ? { body: JSON.stringify(body) } : {}, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15e3)]) : AbortSignal.timeout(15e3) });
     const result = await response.json();
     if (!response.ok) throw Object.assign(Error(result.error || "AGENT_REQUEST_FAILED"), { status: response.status });
@@ -4678,6 +4678,16 @@ function createAgentStateStore(path) {
 // integrations/heming-agent/ensurePairing.mjs
 import { setTimeout as delay } from "node:timers/promises";
 
+// node_modules/@noble/hashes/_u64.js
+var fromNumH = (n) => n / 2 ** 32 | 0;
+var fromNumL = (n) => n >>> 0;
+function setU64FromNum(view, byteOffset, n, isLE) {
+  const h = fromNumH(n);
+  const l = fromNumL(n);
+  view.setUint32(byteOffset, isLE ? l : h, isLE);
+  view.setUint32(byteOffset + 4, isLE ? h : l, isLE);
+}
+
 // node_modules/@noble/hashes/utils.js
 function isBytes(a) {
   return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
@@ -4702,6 +4712,34 @@ function abytes(value, length, title = "") {
   if (!bytes)
     throw new TypeError(message);
   throw new RangeError(message);
+}
+var aobject = (value, label) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new TypeError((label === "object" ? "" : `"${label}" `) + "expected object, got type=" + typeof value);
+};
+function aexists(instance, checkFinished = true) {
+  if (instance.destroyed)
+    throw new Error("hash was destroyed");
+  if (checkFinished && instance.finished)
+    throw new Error("digest() was already called");
+}
+function aoutput(out, instance) {
+  abytes(out, void 0, "output");
+  const min = instance.outputLen;
+  if (!(out.length >= min)) {
+    throw new RangeError('"output" expected length >= ' + min);
+  }
+}
+function clean(...arrays) {
+  for (let i = 0; i < arrays.length; i++) {
+    arrays[i].fill(0);
+  }
+}
+function createView(arr) {
+  return new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+function rotr(word, shift) {
+  return word << 32 - shift | word >>> shift;
 }
 var hasHexBuiltin = /* @__PURE__ */ (() => (
   // @ts-ignore
@@ -4749,6 +4787,31 @@ function hexToBytes(hex) {
   }
   return array;
 }
+function utf8ToBytes(str) {
+  if (typeof str !== "string")
+    throw new TypeError("string expected");
+  return new Uint8Array(new TextEncoder().encode(str));
+}
+function checkOpts(defaults, opts, title = "opts") {
+  aobject(defaults, "defaults");
+  if (opts !== void 0)
+    aobject(opts, title);
+  const merged = Object.assign(defaults, opts);
+  return merged;
+}
+function createHasher(hashCons, info = {}) {
+  if (typeof hashCons !== "function")
+    throw new TypeError('"hashCons" expected function, got type=' + typeof hashCons);
+  info = checkOpts({}, info, "info");
+  const hashC = (msg, opts) => hashCons(opts).update(msg).digest();
+  const tmp = hashCons(void 0);
+  hashC.outputLen = tmp.outputLen;
+  hashC.blockLen = tmp.blockLen;
+  hashC.canXOF = tmp.canXOF;
+  hashC.create = (opts) => hashCons(opts);
+  Object.assign(hashC, info);
+  return Object.freeze(hashC);
+}
 function randomBytes(bytesLength = 32) {
   anumber(bytesLength, "bytesLength");
   const cr = typeof globalThis === "object" ? globalThis.crypto : null;
@@ -4758,6 +4821,289 @@ function randomBytes(bytesLength = 32) {
     throw new RangeError(`"bytesLength" expected <= 65536, got ${bytesLength}`);
   return cr.getRandomValues(new Uint8Array(bytesLength));
 }
+var oidNist = (suffix) => ({
+  // Current NIST hashAlgs suffixes used here fit in one DER subidentifier octet.
+  // Larger suffix values would need base-128 OID encoding and a different length byte.
+  oid: Uint8Array.from([6, 9, 96, 134, 72, 1, 101, 3, 4, 2, suffix])
+});
+
+// node_modules/@noble/hashes/_md.js
+function Chi(a, b, c) {
+  return a & b ^ ~a & c;
+}
+function Maj(a, b, c) {
+  return a & b ^ a & c ^ b & c;
+}
+var HashMD = class {
+  blockLen;
+  outputLen;
+  canXOF = false;
+  padOffset;
+  isLE;
+  // For partial updates less than block size
+  buffer;
+  view;
+  finished = false;
+  length = 0;
+  pos = 0;
+  destroyed = false;
+  constructor(blockLen, outputLen, padOffset, isLE) {
+    this.blockLen = blockLen;
+    this.outputLen = outputLen;
+    this.padOffset = padOffset;
+    this.isLE = isLE;
+    this.buffer = new Uint8Array(blockLen);
+    this.view = createView(this.buffer);
+  }
+  update(data) {
+    aexists(this);
+    abytes(data);
+    const { view, buffer, blockLen } = this;
+    const len = data.length;
+    let processed = false;
+    for (let pos = 0; pos < len; ) {
+      const take = Math.min(blockLen - this.pos, len - pos);
+      if (take === blockLen) {
+        const dataView = createView(data);
+        for (; blockLen <= len - pos; pos += blockLen)
+          this.process(dataView, pos);
+        processed = true;
+        continue;
+      }
+      buffer.set(pos === 0 && take === len ? data : data.subarray(pos, pos + take), this.pos);
+      this.pos += take;
+      pos += take;
+      if (this.pos === blockLen) {
+        this.process(view, 0);
+        this.pos = 0;
+        processed = true;
+      }
+    }
+    this.length += data.length;
+    if (processed)
+      this.roundClean();
+    return this;
+  }
+  digestInto(out) {
+    aexists(this);
+    aoutput(out, this);
+    this.finished = true;
+    const { buffer, view, blockLen, isLE } = this;
+    let { pos } = this;
+    buffer[pos++] = 128;
+    buffer.fill(0, pos);
+    if (this.padOffset > blockLen - pos) {
+      this.process(view, 0);
+      buffer.fill(0);
+    }
+    setU64FromNum(view, blockLen - 8, this.length * 8, isLE);
+    this.process(view, 0);
+    this.roundClean();
+    const oview = out === buffer ? view : createView(out);
+    const len = this.outputLen;
+    const outLen = len / 4;
+    const state = this.get();
+    if (len % 4 || outLen > state.length)
+      throw new Error("invalid outputLen");
+    for (let i = 0; i < outLen; i++)
+      oview.setUint32(4 * i, state[i], isLE);
+  }
+  digest() {
+    const { buffer, outputLen } = this;
+    this.digestInto(buffer);
+    const res = buffer.slice(0, outputLen);
+    this.destroy();
+    return res;
+  }
+  _cloneIntoMeta(to) {
+    const { buffer, length, finished, destroyed, pos } = this;
+    to.destroyed = destroyed;
+    to.finished = finished;
+    to.length = length;
+    to.pos = pos;
+    if (pos)
+      to.buffer.set(buffer);
+    return to;
+  }
+  clone() {
+    return this._cloneInto();
+  }
+};
+var SHA256_IV = /* @__PURE__ */ Uint32Array.from([
+  1779033703,
+  3144134277,
+  1013904242,
+  2773480762,
+  1359893119,
+  2600822924,
+  528734635,
+  1541459225
+]);
+
+// node_modules/@noble/hashes/sha2.js
+var SHA256_K = /* @__PURE__ */ Uint32Array.from([
+  1116352408,
+  1899447441,
+  3049323471,
+  3921009573,
+  961987163,
+  1508970993,
+  2453635748,
+  2870763221,
+  3624381080,
+  310598401,
+  607225278,
+  1426881987,
+  1925078388,
+  2162078206,
+  2614888103,
+  3248222580,
+  3835390401,
+  4022224774,
+  264347078,
+  604807628,
+  770255983,
+  1249150122,
+  1555081692,
+  1996064986,
+  2554220882,
+  2821834349,
+  2952996808,
+  3210313671,
+  3336571891,
+  3584528711,
+  113926993,
+  338241895,
+  666307205,
+  773529912,
+  1294757372,
+  1396182291,
+  1695183700,
+  1986661051,
+  2177026350,
+  2456956037,
+  2730485921,
+  2820302411,
+  3259730800,
+  3345764771,
+  3516065817,
+  3600352804,
+  4094571909,
+  275423344,
+  430227734,
+  506948616,
+  659060556,
+  883997877,
+  958139571,
+  1322822218,
+  1537002063,
+  1747873779,
+  1955562222,
+  2024104815,
+  2227730452,
+  2361852424,
+  2428436474,
+  2756734187,
+  3204031479,
+  3329325298
+]);
+var SHA256_W = /* @__PURE__ */ new Uint32Array(64);
+var SHA2_32B = class extends HashMD {
+  // We cannot use array here since array allows indexing by variable
+  // which means optimizer/compiler cannot use registers.
+  // Numeric initializers matter: starting the fields as `undefined` changes
+  // V8's field representation and makes sha256 3x slower (measured).
+  A = 0;
+  B = 0;
+  C = 0;
+  D = 0;
+  E = 0;
+  F = 0;
+  G = 0;
+  H = 0;
+  constructor(outputLen, IV) {
+    super(64, outputLen, 8, false);
+    this.A = IV[0] | 0;
+    this.B = IV[1] | 0;
+    this.C = IV[2] | 0;
+    this.D = IV[3] | 0;
+    this.E = IV[4] | 0;
+    this.F = IV[5] | 0;
+    this.G = IV[6] | 0;
+    this.H = IV[7] | 0;
+  }
+  get() {
+    const { A, B, C, D, E, F, G, H } = this;
+    return [A, B, C, D, E, F, G, H];
+  }
+  // prettier-ignore
+  set(A, B, C, D, E, F, G, H) {
+    this.A = A | 0;
+    this.B = B | 0;
+    this.C = C | 0;
+    this.D = D | 0;
+    this.E = E | 0;
+    this.F = F | 0;
+    this.G = G | 0;
+    this.H = H | 0;
+  }
+  _cloneInto(to) {
+    (to ||= new this.constructor()).set(...this.get());
+    return this._cloneIntoMeta(to);
+  }
+  process(view, offset) {
+    for (let i = 0; i < 16; i++, offset += 4)
+      SHA256_W[i] = view.getUint32(offset, false);
+    for (let i = 16; i < 64; i++) {
+      const W15 = SHA256_W[i - 15];
+      const W2 = SHA256_W[i - 2];
+      const s0 = rotr(W15, 7) ^ rotr(W15, 18) ^ W15 >>> 3;
+      const s1 = rotr(W2, 17) ^ rotr(W2, 19) ^ W2 >>> 10;
+      SHA256_W[i] = s1 + SHA256_W[i - 7] + s0 + SHA256_W[i - 16] | 0;
+    }
+    let { A, B, C, D, E, F, G, H } = this;
+    for (let i = 0; i < 64; i++) {
+      const sigma1 = rotr(E, 6) ^ rotr(E, 11) ^ rotr(E, 25);
+      const T1 = H + sigma1 + Chi(E, F, G) + SHA256_K[i] + SHA256_W[i] | 0;
+      const sigma0 = rotr(A, 2) ^ rotr(A, 13) ^ rotr(A, 22);
+      const T2 = sigma0 + Maj(A, B, C) | 0;
+      H = G;
+      G = F;
+      F = E;
+      E = D + T1 | 0;
+      D = C;
+      C = B;
+      B = A;
+      A = T1 + T2 | 0;
+    }
+    A = A + this.A | 0;
+    B = B + this.B | 0;
+    C = C + this.C | 0;
+    D = D + this.D | 0;
+    E = E + this.E | 0;
+    F = F + this.F | 0;
+    G = G + this.G | 0;
+    H = H + this.H | 0;
+    this.set(A, B, C, D, E, F, G, H);
+  }
+  roundClean() {
+    clean(SHA256_W);
+  }
+  destroy() {
+    this.destroyed = true;
+    this.set(0, 0, 0, 0, 0, 0, 0, 0);
+    clean(this.buffer);
+  }
+};
+var _SHA256 = class extends SHA2_32B {
+  constructor() {
+    super(32, SHA256_IV);
+  }
+};
+var sha256 = /* @__PURE__ */ createHasher(
+  () => new _SHA256(),
+  /* @__PURE__ */ oidNist(1)
+);
 
 // node_modules/@noble/curves/utils.js
 function aarray(item, title, inner = () => {
@@ -4770,7 +5116,7 @@ function aarray(item, title, inner = () => {
 }
 var abytes2 = (value, length, title) => abytes(value, length, title);
 var anumber2 = anumber;
-function aobject(value, title = "object") {
+function aobject2(value, title = "object") {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     throw new TypeError(title === "object" ? "expected valid options object" : `"${title}" expected object, got type=${typeof value}`);
   return value;
@@ -4858,9 +5204,9 @@ var bitMask = (n) => {
   return (_1n << BigInt(n)) - _1n;
 };
 function validateObject(object, fields = {}, optFields = {}, title = "object") {
-  aobject(object, title);
-  aobject(fields, "fields");
-  aobject(optFields, "optFields");
+  aobject2(object, title);
+  aobject2(fields, "fields");
+  aobject2(optFields, "optFields");
   function checkField(fieldName, expectedType, isOpt) {
     const label = title === "object" ? `param "${String(fieldName)}"` : `"${title}.${String(fieldName)}"`;
     const val = object[fieldName];
@@ -5106,7 +5452,7 @@ var FIELD_FIELDS = [
   "sqrN"
 ];
 function validateField(field) {
-  aobject(field, "field");
+  aobject2(field, "field");
   if (typeof field.ORDER !== "bigint")
     throw new TypeError('param "ORDER" is invalid: expected bigint, got ' + typeof field.ORDER);
   asafenumber(field.BYTES, "BYTES");
@@ -5322,8 +5668,8 @@ function validatePointCons(Point) {
   afunction(pc.fromAffine, "Point.fromAffine");
   afunction(pc.fromBytes, "Point.fromBytes");
   afunction(pc.fromHex, "Point.fromHex");
-  aobject(pc.BASE, "Point.BASE");
-  aobject(pc.ZERO, "Point.ZERO");
+  aobject2(pc.BASE, "Point.BASE");
+  aobject2(pc.ZERO, "Point.ZERO");
   validateField(pc.Fp);
   validateField(pc.Fn);
 }
@@ -6905,6 +7251,48 @@ function normalizeAgentReply(value) {
   return { state: value.state, revision: value.revision, requestMessageId: value.requestMessageId };
 }
 
+// shared/agentInteraction.mjs
+var APPROVAL_ACTIONS = Object.freeze({ once: "\u5141\u8BB8\u4E00\u6B21", session: "\u672C\u6B21\u4F1A\u8BDD\u5141\u8BB8", always: "\u59CB\u7EC8\u5141\u8BB8", deny: "\u62D2\u7EDD" });
+var STATES2 = /* @__PURE__ */ new Set(["pending", "approved", "denied", "expired", "closed", "failed"]);
+var token = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
+function normalizeAgentInteraction(value) {
+  if (!value || value.version !== 1 || value.kind !== "approval" || !token(value.id) || !token(value.requestMessageId) || !token(value.ownerIdentityId) || !STATES2.has(value.status) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5 || typeof value.command !== "string" || !value.command.trim() || value.command.length > 6e3 || typeof value.reason !== "string" || value.reason.length > 2e3 || !Array.isArray(value.actions) || !value.actions.length || value.actions.length > 4 || value.actions.some((action) => !Object.hasOwn(APPROVAL_ACTIONS, action)) || new Set(value.actions).size !== value.actions.length || !value.actions.includes("deny") || typeof value.expiresAt !== "string" || !Number.isFinite(Date.parse(value.expiresAt)) || value.choice !== void 0 && !value.actions.includes(value.choice)) throw Error("INVALID_AGENT_INTERACTION");
+  return {
+    version: 1,
+    kind: "approval",
+    id: value.id,
+    requestMessageId: value.requestMessageId,
+    ownerIdentityId: value.ownerIdentityId,
+    command: value.command,
+    reason: value.reason,
+    actions: [...value.actions],
+    expiresAt: new Date(value.expiresAt).toISOString(),
+    status: value.status,
+    revision: value.revision,
+    ...value.choice ? { choice: value.choice } : {}
+  };
+}
+function normalizeAgentAction(data) {
+  if (!data || !token(data.interactionId) || !token(data.requestMessageId) || !token(data.targetMessageId) || !Object.hasOwn(APPROVAL_ACTIONS, data.action)) throw Error("INVALID_AGENT_ACTION");
+  return {
+    interactionId: data.interactionId,
+    requestMessageId: data.requestMessageId,
+    targetMessageId: data.targetMessageId,
+    action: data.action
+  };
+}
+function mergeAgentInteraction(message, event, actorIdentityId) {
+  const previous = message.agentInteraction, next = event.data.agentInteraction;
+  if (!previous || !next || message.deleted || message.recalled || message.destroyed || String(message.senderIdentityId) !== String(actorIdentityId) || previous.status !== "pending" || next.revision <= previous.revision || next.status === "pending") return message;
+  for (const key of ["id", "requestMessageId", "ownerIdentityId", "command", "reason", "expiresAt"])
+    if (previous[key] !== next[key]) return message;
+  if (JSON.stringify(previous.actions) !== JSON.stringify(next.actions)) return message;
+  return { ...message, text: event.data.text, agentInteraction: next };
+}
+function approvalStatusLabel(status) {
+  return { pending: "\u7B49\u5F85\u4F60\u7684\u6279\u51C6", approved: "\u5DF2\u5141\u8BB8", denied: "\u5DF2\u62D2\u7EDD", expired: "\u6279\u51C6\u8BF7\u6C42\u5DF2\u8FC7\u671F", closed: "\u8BF7\u6C42\u5DF2\u7ED3\u675F", failed: "\u6279\u51C6\u8BF7\u6C42\u672A\u5B8C\u6210" }[status] || "\u8BF7\u6C42\u4E0D\u53EF\u7528";
+}
+
 // shared/groupEvents.mjs
 var GROUP_ROLES = Object.freeze(["owner", "admin", "member"]);
 var GROUP_STATE_ACTIONS = Object.freeze([
@@ -6987,6 +7375,7 @@ var CHAT_EVENT_PROTOCOL = "clear-signal.chat-event";
 var CHAT_EVENT_VERSION = 1;
 var MESSAGE_MUTATION_WINDOW_MS = 6 * 60 * 60 * 1e3;
 var EVENT_TYPES = /* @__PURE__ */ new Set([
+  "agent.action",
   "agent.reply",
   "message.create",
   "message.edit",
@@ -7151,6 +7540,12 @@ function validateData(type, value) {
     if (data.whisper === true) data.whisper = true;
     else delete data.whisper;
     if (data.agentReply) data.agentReply = normalizeAgentReply(data.agentReply);
+    if (data.agentInteraction) {
+      if (data.contentType !== "text" || data.forwardedFrom || data.whisper || data.ephemeral || data.agentReply) throw Error("INVALID_AGENT_INTERACTION_MESSAGE");
+      data.agentInteraction = normalizeAgentInteraction(data.agentInteraction);
+    }
+  } else if (type === "agent.action") {
+    return normalizeAgentAction(data);
   } else if (type === "agent.reply") {
     data.targetMessageId = requiredString(String(data.targetMessageId || ""), "TARGET_MESSAGE_ID", 128);
     data.agentReply = normalizeAgentReply(data.agentReply);
@@ -7197,6 +7592,7 @@ function validateData(type, value) {
       128
     );
     data.text = requiredString(data.text, "MESSAGE_TEXT", 16384);
+    if (data.agentInteraction) data.agentInteraction = normalizeAgentInteraction(data.agentInteraction);
   } else if (type === "message.delete" || type === "message.remove") {
     data.targetMessageId = requiredString(
       String(data.targetMessageId || ""),
@@ -7389,7 +7785,7 @@ function streamError(code, cause) {
 }
 async function listenToSse({
   url,
-  token,
+  token: token2,
   onEvent,
   signal,
   connectTimeoutMs = 12e3,
@@ -7407,7 +7803,7 @@ async function listenToSse({
   let reader;
   try {
     const response = await fetchImpl(url, {
-      headers: { "x-device-token": token },
+      headers: { "x-device-token": token2 },
       signal: controller2.signal
     });
     if (!response.ok || !response.body?.getReader)
@@ -8081,6 +8477,54 @@ function unpackMultiDeviceEnvelope(cryptoHeader, cipherText, deviceId) {
   return { cryptoHeader: packet.cryptoHeader, cipherText: packet.cipherText };
 }
 
+// shared/unreadBadgeProtocol.mjs
+var HASH_PATTERN = /^[a-f0-9]{64}$/;
+var MAX_TOKENS = 100;
+function unreadMessageToken(conversationId, actorIdentityId, messageId) {
+  const actor = Number(actorIdentityId);
+  if (!Number.isSafeInteger(actor) || actor < 0) throw Error("INVALID_UNREAD_MESSAGE_ACTOR");
+  const conversation = String(conversationId ?? "");
+  const message = String(messageId ?? "");
+  if (!conversation || !message) throw Error("INVALID_UNREAD_MESSAGE_ID");
+  return bytesToHex(sha256(utf8ToBytes(JSON.stringify([
+    "heming-unread-v1",
+    conversation,
+    actor,
+    message
+  ]))));
+}
+function validateUnreadHint(value) {
+  if (value === void 0) return void 0;
+  if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== 1 || Object.keys(value).length !== 3 || Object.keys(value).some((key) => !["version", "add", "remove"].includes(key)))
+    throw Error("INVALID_UNREAD_HINT");
+  for (const tokens of [value.add, value.remove]) {
+    if (!Array.isArray(tokens) || tokens.length > MAX_TOKENS || new Set(tokens).size !== tokens.length) throw Error("INVALID_UNREAD_HINT");
+    for (const token2 of tokens)
+      if (typeof token2 !== "string" || !HASH_PATTERN.test(token2)) throw Error("INVALID_UNREAD_HINT");
+  }
+  if (value.add.some((token2) => value.remove.includes(token2))) throw Error("INVALID_UNREAD_HINT");
+  return { version: 1, add: [...value.add], remove: [...value.remove] };
+}
+function unreadHintForPayload(conversationId, actorIdentityId, payload) {
+  const batch = payload?.protocol === "clear-signal.chat-event-batch";
+  const events = batch ? payload.events : [payload];
+  if (!Array.isArray(events) || events.length > MAX_TOKENS) throw Error("INVALID_UNREAD_HINT");
+  const add = /* @__PURE__ */ new Set(), remove = /* @__PURE__ */ new Set();
+  for (const event of events) {
+    if (event?.type === "message.create") {
+      const token2 = unreadMessageToken(conversationId, actorIdentityId, event.data?.messageId);
+      remove.delete(token2);
+      add.add(token2);
+    } else if (event?.type === "message.delete") {
+      const token2 = unreadMessageToken(conversationId, actorIdentityId, event.data?.targetMessageId);
+      add.delete(token2);
+      remove.add(token2);
+    }
+  }
+  if (!batch && !add.size && !remove.size) return void 0;
+  return validateUnreadHint({ version: 1, add: [...add], remove: [...remove] });
+}
+
 // integrations/heming-agent/secureChannel.mjs
 function createSecureAgentChannel({ transport, state, persist }) {
   const { session } = state;
@@ -8107,6 +8551,7 @@ function createSecureAgentChannel({ transport, state, persist }) {
     persist();
   }
   async function send(event) {
+    const unread = unreadHintForPayload(session.conversationId, session.identity.identityId, event);
     await flushOutbox();
     const { targets } = await request(`/api/v1/conversations/${session.conversationId}/prekeys?targetIdentityId=${session.ownerIdentityId}`, {
       body: { establishedDeviceIds: Object.values(state.outbound).map((item) => item.recipientDeviceId) }
@@ -8183,7 +8628,8 @@ function createSecureAgentChannel({ transport, state, persist }) {
     state.outbox = {
       clientMessageId: event.eventId,
       kind: chatEventEnvelopeKind(event.type, event.data),
-      recipients: [{ recipientIdentityId: session.ownerIdentityId, ...encrypted }]
+      recipients: [{ recipientIdentityId: session.ownerIdentityId, ...encrypted }],
+      ...unread ? { unread } : {}
     };
     persist();
     await flushOutbox();
@@ -8253,11 +8699,12 @@ function createReplyDelivery({ channel, state, persist }) {
       await channel.send(createChatEvent("message.create", {
         messageId: job.replyId,
         contentType: "text",
-        text: "\u6B63\u5728\u5904\u7406\u2026",
-        agentReply: { requestMessageId: job.requestMessageId, revision: 0, state: "working" }
+        text,
+        agentReply: { requestMessageId: job.requestMessageId, revision: job.revision, state: status }
       }, { eventId: job.replyId }));
       job.created = true;
       persist();
+      return;
     }
     job.revision++;
     job.text = splitAgentReply(text)[0];
@@ -8276,7 +8723,7 @@ function createReplyDelivery({ channel, state, persist }) {
   }
   async function finish(job) {
     await channel.flushOutbox();
-    if (!job.finalStatus) prepare(job, job.text || "\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u81EA\u52A8\u91CD\u8DD1\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002", "failed");
+    if (!job.finalStatus) prepare(job, "\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u81EA\u52A8\u91CD\u8DD1\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002", "failed");
     if (!job.deliveredParts) {
       await update(job, job.parts[0].text, job.finalStatus);
       job.deliveredParts = 1;
@@ -8296,7 +8743,7 @@ function createReplyDelivery({ channel, state, persist }) {
     state.job = null;
     persist();
   }
-  return { update, prepare, finish };
+  return { prepare, finish };
 }
 
 // integrations/heming-agent/abortable.mjs
@@ -8313,8 +8760,47 @@ function abortable(value, signal) {
   });
 }
 
+// integrations/heming-agent/interactionDelivery.mjs
+function createInteractionDelivery({ channel, state, persist }) {
+  state.interactions ||= {};
+  async function send(value, targetMessageId) {
+    const interaction = normalizeAgentInteraction(value);
+    if (interaction.ownerIdentityId !== String(state.session.ownerIdentityId)) throw Error("AGENT_RECIPIENT_MISMATCH");
+    const text = `\u9700\u8981\u4F60\u7684\u6279\u51C6
+${interaction.command}
+${interaction.reason}
+${approvalStatusLabel(interaction.status)}`;
+    if (!targetMessageId) {
+      if (interaction.requestMessageId !== state.job?.requestMessageId || interaction.status !== "pending" || interaction.revision !== 0)
+        throw Error("AGENT_APPROVAL_TASK_MISMATCH");
+      if (state.interactions[interaction.id]) throw Error("AGENT_APPROVAL_ALREADY_SENT");
+      const id = crypto.randomUUID();
+      const message = { id, senderIdentityId: state.session.identity.identityId, text, agentInteraction: interaction };
+      state.interactions[interaction.id] = message;
+      for (const [key, item] of Object.entries(state.interactions)) {
+        if (Object.keys(state.interactions).length <= 128) break;
+        if (item.agentInteraction.status !== "pending") delete state.interactions[key];
+      }
+      persist();
+      await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text, agentInteraction: interaction }, { eventId: id }));
+      return id;
+    }
+    const previous = state.interactions[interaction.id];
+    if (!previous || previous.id !== targetMessageId) throw Error("AGENT_APPROVAL_NOT_FOUND");
+    const event = createChatEvent("message.edit", { targetMessageId, text, agentInteraction: interaction });
+    const next = mergeAgentInteraction(previous, event, state.session.identity.identityId);
+    if (next === previous) throw Error("AGENT_APPROVAL_STATE_CONFLICT");
+    await channel.send(event);
+    state.interactions[interaction.id] = next;
+    persist();
+    return targetMessageId;
+  }
+  return { send };
+}
+
 // integrations/heming-agent/connector.mjs
-function createAgentConnector({ transport, store, onMessage, onStatus = () => {
+function createAgentConnector({ transport, store, onMessage, onAction = () => {
+}, onStatus = () => {
 }, taskTimeoutMs = 6e5 }) {
   const state = store.read();
   if (!state?.session?.token) throw Error("AGENT_PAIRING_REQUIRED");
@@ -8323,7 +8809,9 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
   const persist = () => store.write(state);
   const channel = createSecureAgentChannel({ transport, state, persist });
   const delivery = createReplyDelivery({ channel, state, persist });
+  const interactions = createInteractionDelivery({ channel, state, persist });
   let activeSync = null;
+  let activeDrain = null;
   let started = false;
   let timer;
   async function execute(event, signal) {
@@ -8333,7 +8821,6 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
     const deadline = AbortSignal.timeout(taskTimeoutMs);
     const taskSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
     try {
-      await delivery.update(job, "", "working");
       if (event.data.whisper || event.data.ephemeral) throw Error("AGENT_EPHEMERAL_UNSUPPORTED");
       if (event.data.contentType && event.data.contentType !== "text") throw Error("AGENT_MEDIA_UNSUPPORTED");
       const result = await abortable(onMessage({
@@ -8345,7 +8832,7 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
         senderIdentityId: state.session.ownerIdentityId,
         signal: taskSignal
       }), taskSignal);
-      let text = "", lastFlush = 0;
+      let text = "";
       if (result?.[Symbol.asyncIterator]) {
         const iterator = result[Symbol.asyncIterator]();
         while (true) {
@@ -8354,10 +8841,6 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
           const delta = next.value;
           text = delta?.mode === "snapshot" ? String(delta.text || "") : text + String(delta || "");
           if (text.length > 131072) throw Error("AGENT_REPLY_LIMIT");
-          if (Date.now() - lastFlush >= 300 && text.length <= 16384) {
-            await delivery.update(job, text, "generating");
-            lastFlush = Date.now();
-          }
         }
       } else text = String(result?.text ?? result ?? "");
       taskSignal.throwIfAborted();
@@ -8366,15 +8849,13 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
       delivery.prepare(job, text, "completed");
     } catch (error) {
       const explanation = error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u652F\u6301\u6587\u5B57\u548C Markdown\uFF0C\u6682\u4E0D\u652F\u6301\u5904\u7406\u9644\u4EF6\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
-      delivery.prepare(job, job.text || explanation, taskSignal.aborted ? "stopped" : "failed");
+      delivery.prepare(job, explanation, taskSignal.aborted ? "stopped" : "failed");
       onStatus("task-failed");
     }
     await delivery.finish(job);
   }
   async function sync(signal) {
-    if (activeSync) return activeSync;
-    activeSync = (async () => {
-      if (state.job) await delivery.finish(state.job);
+    if (!activeSync) activeSync = (async () => {
       let more = true;
       while (more && !signal?.aborted) {
         const result = await channel.request("/api/v1/sync?limit=100", { signal });
@@ -8383,25 +8864,45 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
         for (const envelope of pending) {
           if (!state.processed.includes(envelope.clientMessageId)) {
             const events = normalizeChatPayload(await channel.decrypt(envelope), envelope);
+            const actions = [];
             for (const event of events) {
+              if (event.type === "agent.action") {
+                if (!state.handledMessages.includes(event.eventId)) {
+                  actions.push(event);
+                  state.handledMessages = [...state.handledMessages, event.eventId].slice(-4096);
+                }
+                continue;
+              }
               if (event.type !== "message.create" || state.handledMessages.includes(event.data.messageId)) continue;
               state.inbox.push(event);
               state.handledMessages = [...state.handledMessages, event.data.messageId].slice(-4096);
             }
             state.processed = [...state.processed, envelope.clientMessageId].slice(-4096);
             persist();
+            for (const action of actions) await onAction({
+              ...action.data,
+              eventId: action.eventId,
+              conversationId: state.session.conversationId,
+              senderIdentityId: state.session.ownerIdentityId
+            });
           }
           await channel.request(`/api/v1/envelopes/${envelope.id}`, { method: "PATCH", body: { status: "read" }, signal });
-        }
-        while (state.inbox.length && !signal?.aborted) {
-          const event = state.inbox.shift();
-          await execute(event, signal);
         }
       }
     })().finally(() => {
       activeSync = null;
     });
-    return activeSync;
+    await activeSync;
+    if (!activeDrain) activeDrain = (async () => {
+      if (state.job) await delivery.finish(state.job);
+      while (state.inbox.length && !signal?.aborted) {
+        const event = state.inbox.shift();
+        await execute(event, signal);
+      }
+    })().finally(() => {
+      activeDrain = null;
+    });
+    return activeDrain;
   }
   async function start(signal) {
     if (started) throw Error("AGENT_ALREADY_STARTED");
@@ -8447,6 +8948,8 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
       clearInterval(timer);
       await activeSync?.catch(() => {
       });
+      await activeDrain?.catch(() => {
+      });
       store.unlock?.();
       started = false;
     }
@@ -8456,7 +8959,7 @@ function createAgentConnector({ transport, store, onMessage, onStatus = () => {
     await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text }, { eventId: id }));
     return id;
   }
-  return { start, sync, sendText, session: state.session };
+  return { start, sync, sendText, sendInteraction: interactions.send, session: state.session };
 }
 
 // integrations/heming-agent/stdioBridge.mjs
@@ -8528,6 +9031,12 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
           (id) => emit2({ type: "sent", nonce: event.nonce, messageId: id }),
           () => emit2({ type: "send-failed", nonce: event.nonce })
         );
+      } else if (event.type === "interaction" && connector) {
+        if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
+        void connector.sendInteraction(event.interaction, event.targetMessageId).then(
+          (id) => emit2({ type: "sent", nonce: event.nonce, messageId: id }),
+          () => emit2({ type: "send-failed", nonce: event.nonce })
+        );
       } else if (active && event.requestId === active.id) {
         if (event.type === "snapshot" && typeof event.text === "string") active.feed.snapshot(event.text);
         else if (event.type === "complete") active.feed.complete();
@@ -8548,6 +9057,9 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
   return {
     attach(value) {
       connector = value;
+    },
+    onAction(action) {
+      emit2({ type: "action", ...action });
     },
     onMessage(request) {
       const feed = createReplyFeed(request.signal);
@@ -8596,7 +9108,7 @@ try {
     else {
       const bridge = createStdioBridge({ signal: controller.signal });
       process.stdin.once("end", () => controller.abort());
-      const connector = createAgentConnector({ transport, store, onMessage: bridge.onMessage, onStatus: (status) => emit({ type: "status", status }) });
+      const connector = createAgentConnector({ transport, store, onMessage: bridge.onMessage, onAction: bridge.onAction, onStatus: (status) => emit({ type: "status", status }) });
       bridge.attach(connector);
       emit({ type: "ready", ownerIdentityId: state.session.ownerIdentityId, conversationId: state.session.conversationId });
       try {

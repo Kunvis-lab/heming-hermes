@@ -13,6 +13,7 @@ from gateway.platforms.event import MessageEvent, MessageType
 from hermes_constants import get_hermes_home
 
 from .setup import environment_defaults, interactive_setup, is_configured
+from .approval import ApprovalCards
 
 
 class HemingAdapter(BasePlatformAdapter):
@@ -28,6 +29,8 @@ class HemingAdapter(BasePlatformAdapter):
         self._parts = {}
         self._suppressed_parts = set()
         self._sends = {}
+        self._approvals = ApprovalCards(self)
+        self._actions = set()
 
     def _clear_request(self):
         self._request, self._parts = None, {}
@@ -89,10 +92,21 @@ class HemingAdapter(BasePlatformAdapter):
                     future = self._sends.pop(event.get("nonce"), None)
                     if future and not future.done():
                         future.set_result(event)
+                elif event["type"] == "action":
+                    # The reader must stay free to receive the card-update ACK.
+                    task = asyncio.create_task(self._approvals.handle(event))
+                    self._actions.add(task)
+                    task.add_done_callback(self._action_finished)
                 elif event["type"] == "cancel":
                     if self._request and self._request["requestId"] == event["requestId"]:
+                        task = asyncio.create_task(self._approvals.close_request(event["requestId"]))
+                        self._actions.add(task)
+                        task.add_done_callback(self._action_finished)
                         self._clear_request()
         finally:
+            self._approvals.reset()
+            for task in self._actions:
+                task.cancel()
             self._session = None
             self._clear_request()
             self._mark_disconnected()
@@ -101,11 +115,47 @@ class HemingAdapter(BasePlatformAdapter):
                     future.set_exception(RuntimeError("HEMING_BRIDGE_CLOSED"))
             self._sends.clear()
 
+    def _action_finished(self, task):
+        self._actions.discard(task)
+        if not task.cancelled():
+            task.exception()  # Retrieve failures without logging message contents.
+
+    async def _bridge_send(self, event):
+        nonce = str(uuid.uuid4())
+        future = asyncio.get_running_loop().create_future()
+        self._sends[nonce] = future
+        try:
+            await self._write({**event, "nonce": nonce})
+            result = await asyncio.wait_for(future, 20)
+            if result["type"] != "sent":
+                raise RuntimeError("HEMING_DELIVERY_FAILED")
+            return result
+        finally:
+            self._sends.pop(nonce, None)
+
+    async def send_exec_approval(self, chat_id, command, session_key, description=None,
+                                 metadata=None, allow_permanent=True, allow_session=True, smart_denied=False):
+        try:
+            message_id = await self._approvals.send(chat_id, command, session_key, description,
+                allow_permanent, allow_session, smart_denied)
+            return SendResult(success=True, message_id=message_id)
+        except (ImportError, RuntimeError, ValueError, asyncio.TimeoutError):
+            return SendResult(success=False, error="HEMING_APPROVAL_UNAVAILABLE")
+
+    async def _send_exec_approval_prompt(self, prompt):
+        # New Hermes native-card capability hook; the legacy entry point above
+        # remains compatible with older runners. Never change Hermes policy.
+        choices = {choice for _, choice, _ in prompt.actions}
+        return await self.send_exec_approval(prompt.chat_id, prompt.command, prompt.session_key,
+            prompt.description, prompt.metadata, "always" in choices, "session" in choices, prompt.smart_denied)
+
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         if not self._session or str(chat_id) != self._session["conversationId"]:
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
         if reply_to and (not self._request or str(reply_to) != self._request["requestId"]):
             return SendResult(success=False, error="HEMING_REPLY_CLOSED")
+        if (metadata or {}).get("is_approval_prompt"):
+            return SendResult(success=False, error="HEMING_APPROVAL_REQUIRES_NATIVE_CARD")
         if (metadata or {}).get("_interim_send"):
             message_id = str(uuid.uuid4())
             if self._request:
@@ -114,17 +164,12 @@ class HemingAdapter(BasePlatformAdapter):
         if self._request:
             message_id = str(uuid.uuid4())
             self._parts[message_id] = content
-            await self._snapshot()
             return SendResult(success=True, message_id=message_id)
-        nonce = str(uuid.uuid4())
-        future = asyncio.get_running_loop().create_future()
-        self._sends[nonce] = future
         try:
-            await self._write({"type": "send", "nonce": nonce, "conversationId": chat_id, "text": content})
-            result = await asyncio.wait_for(future, 20)
-            return SendResult(success=result["type"] == "sent", message_id=result.get("messageId"))
-        finally:
-            self._sends.pop(nonce, None)
+            result = await self._bridge_send({"type": "send", "conversationId": chat_id, "text": content})
+            return SendResult(success=True, message_id=result.get("messageId"))
+        except (RuntimeError, asyncio.TimeoutError):
+            return SendResult(success=False, error="HEMING_DELIVERY_FAILED")
 
     async def _snapshot(self):
         await self._write({"type": "snapshot", "requestId": self._request["requestId"],
@@ -140,16 +185,17 @@ class HemingAdapter(BasePlatformAdapter):
         if (metadata or {}).get("_interim_send"):
             self._suppressed_parts.add(message_id)
             del self._parts[message_id]
-            await self._snapshot()
             return SendResult(success=True, message_id=message_id)
         self._parts[message_id] = content
-        await self._snapshot()
         return SendResult(success=True, message_id=message_id)
 
     async def on_processing_complete(self, event, outcome):
         if self._request and event.message_id == self._request["requestId"]:
             request = self._request
             try:
+                await self._approvals.close_request(request["requestId"])
+                if outcome.value == "success":
+                    await self._snapshot()
                 await self._write({"type": "complete" if outcome.value == "success" else "failed",
                     "requestId": request["requestId"]})
             finally:
@@ -159,7 +205,19 @@ class HemingAdapter(BasePlatformAdapter):
     async def get_chat_info(self, chat_id):
         return {"name": "和鸣个人助手", "type": "dm"}
 
+    async def delete_message(self, chat_id, message_id):
+        # Hermes may replace a stream preview with a clean final send. Those
+        # previews are local buffers here, not already-visible chat messages.
+        if not self._session or str(chat_id) != self._session["conversationId"]:
+            return False
+        removed = self._parts.pop(message_id, None) is not None
+        self._suppressed_parts.discard(message_id)
+        return removed
+
     async def disconnect(self):
+        self._approvals.reset()
+        for task in self._actions:
+            task.cancel()
         if self._process and self._process.returncode is None:
             self._process.terminate()
             try:
