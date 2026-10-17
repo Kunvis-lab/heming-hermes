@@ -1,0 +1,191 @@
+"""Hermes platform adapter. Plaintext stays in the local process pair."""
+import asyncio
+import dataclasses
+import json
+import shutil
+import uuid
+from pathlib import Path
+
+from gateway.config import Platform
+from gateway.pairing import PairingStore
+from gateway.platforms.base import BasePlatformAdapter, SendResult
+from gateway.platforms.event import MessageEvent, MessageType
+from hermes_constants import get_hermes_home
+
+from .setup import environment_defaults, interactive_setup, is_configured
+
+
+class HemingAdapter(BasePlatformAdapter):
+    REQUIRES_EDIT_FINALIZE = True
+    MAX_MESSAGE_LENGTH = 16_384
+
+    def __init__(self, config):
+        super().__init__(config, Platform("heming"))
+        self._process = None
+        self._reader = None
+        self._session = None
+        self._request = None
+        self._parts = {}
+        self._suppressed_parts = set()
+        self._sends = {}
+
+    def _clear_request(self):
+        self._request, self._parts = None, {}
+        self._suppressed_parts.clear()
+
+    async def connect(self, *, is_reconnect=False):
+        if self._process and self._process.returncode is None:
+            return True
+        self._session = None
+        self._clear_request()
+        state = Path(get_hermes_home()) / "heming" / "identity.json"
+        args = ["bridge", "--provider", "Hermes", "--state", str(state)]
+        # Developer-only loopback override for isolated integration tests. The
+        # connector validates the origin; ordinary users keep the pinned default.
+        origin = (getattr(self.config, "extra", None) or {}).get("origin")
+        if origin:
+            args.extend(["--origin", origin])
+        self._process = await asyncio.create_subprocess_exec(
+            shutil.which("node"), str(Path(__file__).with_name("connector.mjs")),
+            *args,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            limit=300_000,
+        )
+        self._reader = asyncio.create_task(self._read_bridge())
+        # Pairing must not block all other Hermes channels' startup deadlines.
+        return True
+
+    async def _write(self, event):
+        if not self._process or self._process.returncode is not None:
+            raise RuntimeError("HEMING_BRIDGE_OFFLINE")
+        self._process.stdin.write((json.dumps(event, ensure_ascii=False) + "\n").encode())
+        await self._process.stdin.drain()
+
+    async def _read_bridge(self):
+        try:
+            while line := await self._process.stdout.readline():
+                event = json.loads(line)
+                if event["type"] == "ready":
+                    self._session = event
+                    # The QR approval already proves this exact owner. Use Hermes'
+                    # normal pairing store, never trust-all or synthetic internal events.
+                    pairing = PairingStore(profile=getattr(self, "_owner_profile", None))
+                    owner = str(event["ownerIdentityId"])
+                    if not pairing.is_approved("heming", owner):
+                        code = pairing.generate_code("heming", owner, "和鸣用户")
+                        if not code or not pairing.approve_code("heming", code):
+                            raise RuntimeError("HEMING_OWNER_APPROVAL_FAILED")
+                    self._mark_connected()
+                elif event["type"] == "message":
+                    if not self._session or event["conversationId"] != self._session["conversationId"] or str(event["senderIdentityId"]) != str(self._session["ownerIdentityId"]):
+                        raise RuntimeError("HEMING_OWNER_MISMATCH")
+                    self._clear_request()
+                    self._request = event
+                    source = self.build_source(chat_id=event["conversationId"], chat_type="dm",
+                        user_id=str(event["senderIdentityId"]), user_name="和鸣用户")
+                    await self.handle_message(MessageEvent(text=event["text"], message_type=MessageType.TEXT,
+                        source=source, message_id=event["requestId"]))
+                elif event["type"] in ("sent", "send-failed"):
+                    future = self._sends.pop(event.get("nonce"), None)
+                    if future and not future.done():
+                        future.set_result(event)
+                elif event["type"] == "cancel":
+                    if self._request and self._request["requestId"] == event["requestId"]:
+                        self._clear_request()
+        finally:
+            self._session = None
+            self._clear_request()
+            self._mark_disconnected()
+            for future in self._sends.values():
+                if not future.done():
+                    future.set_exception(RuntimeError("HEMING_BRIDGE_CLOSED"))
+            self._sends.clear()
+
+    async def send(self, chat_id, content, reply_to=None, metadata=None):
+        if not self._session or str(chat_id) != self._session["conversationId"]:
+            return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
+        if reply_to and (not self._request or str(reply_to) != self._request["requestId"]):
+            return SendResult(success=False, error="HEMING_REPLY_CLOSED")
+        if (metadata or {}).get("_interim_send"):
+            message_id = str(uuid.uuid4())
+            if self._request:
+                self._suppressed_parts.add(message_id)
+            return SendResult(success=True, message_id=message_id)
+        if self._request:
+            message_id = str(uuid.uuid4())
+            self._parts[message_id] = content
+            await self._snapshot()
+            return SendResult(success=True, message_id=message_id)
+        nonce = str(uuid.uuid4())
+        future = asyncio.get_running_loop().create_future()
+        self._sends[nonce] = future
+        try:
+            await self._write({"type": "send", "nonce": nonce, "conversationId": chat_id, "text": content})
+            result = await asyncio.wait_for(future, 20)
+            return SendResult(success=result["type"] == "sent", message_id=result.get("messageId"))
+        finally:
+            self._sends.pop(nonce, None)
+
+    async def _snapshot(self):
+        await self._write({"type": "snapshot", "requestId": self._request["requestId"],
+            "text": "\n\n".join(self._parts.values())})
+
+    async def edit_message(self, chat_id, message_id, content, *, finalize=False, metadata=None):
+        if not self._session or not self._request or str(chat_id) != self._session["conversationId"]:
+            return SendResult(success=False, error="HEMING_REPLY_CLOSED")
+        if message_id not in self._parts and message_id not in self._suppressed_parts:
+            return SendResult(success=False, error="HEMING_MESSAGE_NOT_EDITABLE")
+        if message_id in self._suppressed_parts:
+            return SendResult(success=True, message_id=message_id)
+        if (metadata or {}).get("_interim_send"):
+            self._suppressed_parts.add(message_id)
+            del self._parts[message_id]
+            await self._snapshot()
+            return SendResult(success=True, message_id=message_id)
+        self._parts[message_id] = content
+        await self._snapshot()
+        return SendResult(success=True, message_id=message_id)
+
+    async def on_processing_complete(self, event, outcome):
+        if self._request and event.message_id == self._request["requestId"]:
+            request = self._request
+            try:
+                await self._write({"type": "complete" if outcome.value == "success" else "failed",
+                    "requestId": request["requestId"]})
+            finally:
+                if self._request is request:
+                    self._clear_request()
+
+    async def get_chat_info(self, chat_id):
+        return {"name": "和鸣个人助手", "type": "dm"}
+
+    async def disconnect(self):
+        if self._process and self._process.returncode is None:
+            self._process.terminate()
+            try:
+                await asyncio.wait_for(self._process.wait(), 5)
+            except asyncio.TimeoutError:
+                self._process.kill()
+                await self._process.wait()
+        if self._reader:
+            await asyncio.gather(self._reader, return_exceptions=True)
+        self._session = None
+        self._clear_request()
+        self._mark_disconnected()
+
+
+def register(ctx):
+    options = dict(name="heming", label="和鸣 · 扫码连接", adapter_factory=HemingAdapter,
+        check_fn=lambda: bool(shutil.which("node")), validate_config=lambda _: True,
+        setup_fn=interactive_setup, is_connected=is_configured,
+        env_enablement_fn=environment_defaults,
+        required_env=[], max_message_length=16_384,
+        allowed_users_env="HEMING_ALLOWED_USERS", allow_all_env="HEMING_ALLOW_ALL_USERS",
+        platform_hint="和鸣支持 Markdown。直接使用标题、列表、表格和代码块，勿把整条回复套在代码块中。")
+    try:
+        from gateway.platform_registry import PlatformEntry
+        if "display_tier" in {field.name for field in dataclasses.fields(PlatformEntry)}:
+            options["display_tier"] = "high"
+    except ImportError:
+        pass
+    ctx.register_platform(**options)
