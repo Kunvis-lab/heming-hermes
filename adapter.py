@@ -14,6 +14,7 @@ from hermes_constants import get_hermes_home
 
 from .setup import environment_defaults, interactive_setup, is_configured
 from .approval import ApprovalCards
+from .work import WorkCards
 
 
 class HemingAdapter(BasePlatformAdapter):
@@ -31,10 +32,14 @@ class HemingAdapter(BasePlatformAdapter):
         self._sends = {}
         self._approvals = ApprovalCards(self)
         self._actions = set()
+        self._work = WorkCards(self)
+        self._request_event = None
 
     def _clear_request(self):
         self._request, self._parts = None, {}
         self._suppressed_parts.clear()
+        self._request_event = None
+        self._work.records.clear()
 
     async def connect(self, *, is_reconnect=False):
         if self._process and self._process.returncode is None:
@@ -86,24 +91,25 @@ class HemingAdapter(BasePlatformAdapter):
                     self._request = event
                     source = self.build_source(chat_id=event["conversationId"], chat_type="dm",
                         user_id=str(event["senderIdentityId"]), user_name="和鸣用户")
-                    await self.handle_message(MessageEvent(text=event["text"], message_type=MessageType.TEXT,
-                        source=source, message_id=event["requestId"]))
+                    self._request_event = MessageEvent(text=event["text"], message_type=MessageType.TEXT,
+                        source=source, message_id=event["requestId"])
+                    await self.handle_message(self._request_event)
                 elif event["type"] in ("sent", "send-failed"):
                     future = self._sends.pop(event.get("nonce"), None)
                     if future and not future.done():
                         future.set_result(event)
                 elif event["type"] == "action":
                     # The reader must stay free to receive the card-update ACK.
-                    task = asyncio.create_task(self._approvals.handle(event))
+                    task = asyncio.create_task(self._work.handle(event) if event.get("kind") else self._approvals.handle(event))
                     self._actions.add(task)
                     task.add_done_callback(self._action_finished)
                 elif event["type"] == "cancel":
                     if self._request and self._request["requestId"] == event["requestId"]:
-                        task = asyncio.create_task(self._approvals.close_request(event["requestId"]))
+                        task = asyncio.create_task(self._work.stop(event["requestId"], notify=False))
                         self._actions.add(task)
                         task.add_done_callback(self._action_finished)
-                        self._clear_request()
         finally:
+            self._work.reset()
             self._approvals.reset()
             for task in self._actions:
                 task.cancel()
@@ -190,6 +196,12 @@ class HemingAdapter(BasePlatformAdapter):
         return SendResult(success=True, message_id=message_id)
 
     async def on_processing_complete(self, event, outcome):
+        if event.message_id in self._work.stopping:
+            return
+        async with self._work.lock:
+            await self._finish_request(event, outcome)
+
+    async def _finish_request(self, event, outcome):
         if self._request and event.message_id == self._request["requestId"]:
             request = self._request
             try:
@@ -201,6 +213,23 @@ class HemingAdapter(BasePlatformAdapter):
             finally:
                 if self._request is request:
                     self._clear_request()
+
+    async def on_processing_start(self, event):
+        if self._request and event.message_id == self._request["requestId"]:
+            await self._work.status("working", hasattr(self, "cancel_session_processing"))
+
+    async def send_clarify(self, chat_id, question, choices, clarify_id, session_key, metadata=None):
+        try:
+            message_id = await self._work.question(chat_id, question, choices, clarify_id, session_key)
+            return SendResult(success=True, message_id=message_id)
+        except (ImportError, RuntimeError, ValueError, asyncio.TimeoutError):
+            return SendResult(success=False, error="HEMING_QUESTION_UNAVAILABLE")
+
+    async def retire_clarify_card(self, clarify_id, notice):
+        try:
+            await self._work.retire(clarify_id)
+        except (RuntimeError, asyncio.TimeoutError):
+            pass
 
     async def get_chat_info(self, chat_id):
         return {"name": "和鸣个人助手", "type": "dm"}
@@ -215,6 +244,7 @@ class HemingAdapter(BasePlatformAdapter):
         return removed
 
     async def disconnect(self):
+        self._work.reset()
         self._approvals.reset()
         for task in self._actions:
             task.cancel()
