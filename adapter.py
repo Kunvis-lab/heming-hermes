@@ -15,14 +15,17 @@ from hermes_constants import get_hermes_home
 from .setup import environment_defaults, interactive_setup, is_configured
 from .approval import ApprovalCards
 from .work import WorkCards
+from .managed_tasks import ManagedTasks
 
 
 class HemingAdapter(BasePlatformAdapter):
     REQUIRES_EDIT_FINALIZE = True
     MAX_MESSAGE_LENGTH = 16_384
 
-    def __init__(self, config):
+    def __init__(self, config, *, state_path=None, state_listener=None):
         super().__init__(config, Platform("heming"))
+        self.state_path = Path(state_path) if state_path else Path(get_hermes_home()) / "heming" / "identity.json"
+        self._state_listener = state_listener
         self._process = None
         self._reader = None
         self._session = None
@@ -34,6 +37,21 @@ class HemingAdapter(BasePlatformAdapter):
         self._actions = set()
         self._work = WorkCards(self)
         self._request_event = None
+        self._managed = ManagedTasks(self)
+
+    def _mark_connected(self, **kwargs):
+        if self._state_listener:
+            self._running = True
+            self._state_listener(self)
+        else:
+            super()._mark_connected(**kwargs)
+
+    def _mark_disconnected(self):
+        if self._state_listener:
+            self._running = False
+            self._state_listener(self)
+        else:
+            super()._mark_disconnected()
 
     def _clear_request(self):
         self._request, self._parts = None, {}
@@ -46,8 +64,7 @@ class HemingAdapter(BasePlatformAdapter):
             return True
         self._session = None
         self._clear_request()
-        state = Path(get_hermes_home()) / "heming" / "identity.json"
-        args = ["bridge", "--provider", "Hermes", "--state", str(state)]
+        args = ["bridge", "--provider", "Hermes", "--state", str(self.state_path)]
         # Developer-only loopback override for isolated integration tests. The
         # connector validates the origin; ordinary users keep the pinned default.
         origin = (getattr(self.config, "extra", None) or {}).get("origin")
@@ -74,6 +91,10 @@ class HemingAdapter(BasePlatformAdapter):
             while line := await self._process.stdout.readline():
                 event = json.loads(line)
                 if event["type"] == "ready":
+                    expected = getattr(self, "_expected_session", None)
+                    if expected and (event.get("conversationId") != expected["conversationId"] or
+                            str(event.get("ownerIdentityId")) != str(expected["ownerIdentityId"])):
+                        raise RuntimeError("HEMING_OWNER_MISMATCH")
                     self._session = event
                     # The QR approval already proves this exact owner. Use Hermes'
                     # normal pairing store, never trust-all or synthetic internal events.
@@ -94,6 +115,10 @@ class HemingAdapter(BasePlatformAdapter):
                     self._request_event = MessageEvent(text=event["text"], message_type=MessageType.TEXT,
                         source=source, message_id=event["requestId"])
                     await self.handle_message(self._request_event)
+                elif event["type"] == "managed-task-request":
+                    task = asyncio.create_task(self._managed.handle(event))
+                    self._actions.add(task)
+                    task.add_done_callback(self._action_finished)
                 elif event["type"] in ("sent", "send-failed"):
                     future = self._sends.pop(event.get("nonce"), None)
                     if future and not future.done():
@@ -109,6 +134,7 @@ class HemingAdapter(BasePlatformAdapter):
                         self._actions.add(task)
                         task.add_done_callback(self._action_finished)
         finally:
+            self._managed.stop()
             self._work.reset()
             self._approvals.reset()
             for task in self._actions:
@@ -162,6 +188,14 @@ class HemingAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="HEMING_REPLY_CLOSED")
         if (metadata or {}).get("is_approval_prompt"):
             return SendResult(success=False, error="HEMING_APPROVAL_REQUIRES_NATIVE_CARD")
+        if (metadata or {}).get("job_id"):
+            # Cron delivery can happen while a normal chat answer is buffered.
+            # It must never be appended to that unrelated answer.
+            try:
+                result = await self._bridge_send({"type": "send", "conversationId": chat_id, "text": content})
+                return SendResult(success=True, message_id=result.get("messageId"))
+            except (RuntimeError, asyncio.TimeoutError):
+                return SendResult(success=False, error="HEMING_DELIVERY_FAILED")
         if (metadata or {}).get("_interim_send"):
             message_id = str(uuid.uuid4())
             if self._request:
@@ -244,6 +278,7 @@ class HemingAdapter(BasePlatformAdapter):
         return removed
 
     async def disconnect(self):
+        self._managed.stop()
         self._work.reset()
         self._approvals.reset()
         for task in self._actions:
@@ -263,7 +298,8 @@ class HemingAdapter(BasePlatformAdapter):
 
 
 def register(ctx):
-    options = dict(name="heming", label="和鸣 · 扫码连接", adapter_factory=HemingAdapter,
+    from .team import HemingTeamAdapter
+    options = dict(name="heming", label="和鸣 · 扫码连接", adapter_factory=HemingTeamAdapter,
         check_fn=lambda: bool(shutil.which("node")), validate_config=lambda _: True,
         setup_fn=interactive_setup, is_connected=is_configured,
         env_enablement_fn=environment_defaults,

@@ -7,59 +7,16 @@ import subprocess
 from pathlib import Path
 
 from hermes_constants import get_hermes_home
+from .accounts import legacy_path, new_pairing_path, pairings, read_pairing
 
 
 def identity_path():
-    return Path(get_hermes_home()) / "heming" / "identity.json"
-
-
-def _text(value):
-    return isinstance(value, str) and bool(value.strip())
-
-
-def _identity_id(value):
-    return type(value) is int and value > 0
-
-
-def _key(value, kind, curve, fields):
-    return isinstance(value, dict) and value.get("kty") == kind and value.get("crv") == curve and all(
-        _text(value.get(field)) for field in fields
-    )
+    return legacy_path(get_hermes_home())
 
 
 def _paired_session():
-    """Read one verified local pairing; never expose it through platform metadata."""
-    path = identity_path()
-    try:
-        if path.is_symlink():
-            return None
-        with path.open(encoding="utf-8") as handle:
-            state = json.load(handle)
-        if not isinstance(state, dict):
-            return None
-        session = state.get("session")
-        if not isinstance(session, dict):
-            return None
-        identity = session.get("identity")
-        if not isinstance(identity, dict):
-            return None
-        private = session.get("privateKey")
-        public = identity.get("publicKey")
-        valid = (
-            _text(session.get("token"))
-            and _text(session.get("deviceId"))
-            and _identity_id(session.get("ownerIdentityId"))
-            and _identity_id(identity.get("identityId"))
-            and _text(session.get("conversationId"))
-            and _key(private, "OKP", "X25519", ("x", "d"))
-            and _key(public, "OKP", "X25519", ("x",))
-            and private["x"] == public["x"]
-            and _key(state.get("proofPrivateKey"), "EC", "P-256", ("x", "y", "d"))
-            and _text(state.get("devicePublicKey"))
-        )
-        return session if valid else None
-    except (OSError, ValueError, UnicodeError):
-        return None
+    sessions = pairings(get_hermes_home())
+    return sessions[0][1] if sessions else None
 
 
 def is_configured(_config=None):
@@ -129,15 +86,17 @@ def _pairing_in_use(path):
 def interactive_setup():
     """Hermes setup_fn contract: synchronous, no arguments, terminal IO inherited."""
     print("\n和鸣 · 扫码连接")
-    if is_configured():
-        print("当前 profile 已完成配对。启动或重启 Gateway 后将复用现有身份。")
-        return
     node = shutil.which("node")
     connector = Path(__file__).with_name("connector.mjs")
     if not node or not connector.is_file():
         print("未找到 Node.js 或和鸣连接器，请检查插件安装及 Gateway 的 PATH。")
         return
     state = identity_path()
+    if is_configured():
+        # Selecting this platform again adds a member, never overwrites a live
+        # identity or requires every team member to stop the shared Gateway.
+        state = new_pairing_path(get_hermes_home())
+        print("新增独立连接；已有机器人的身份、聊天和任务保持不变。")
     if _pairing_in_use(state):
         print("当前 profile 的和鸣连接器正在使用配对文件，请先停止对应 Gateway 后重试。")
         return
@@ -156,7 +115,7 @@ def interactive_setup():
     except OSError:
         print("连接器未能启动，请检查 Node.js 和插件文件。")
         return
-    if result.returncode != 0 or not is_configured():
+    if result.returncode != 0 or read_pairing(get_hermes_home(), state) is None:
         print("本次配对未完成，请检查网络或 Gateway 是否正在使用当前 profile 后重试。")
         return
-    print("和鸣扫码配对完成。启动或重启当前 profile 的 Gateway 后即可收发消息。")
+    print("和鸣扫码配对完成。运行中的 Gateway 会自动加载新连接；尚未启动时请启动 Gateway。")

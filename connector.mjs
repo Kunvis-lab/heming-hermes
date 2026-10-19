@@ -4378,7 +4378,7 @@ var require_browser = __commonJS({
     var QRCode2 = require_qrcode();
     var CanvasRenderer = require_canvas();
     var SvgRenderer = require_svg_tag();
-    function renderCanvas(renderFunc, canvas, text, opts, cb) {
+    function renderCanvas(renderFunc, canvas, text3, opts, cb) {
       const args2 = [].slice.call(arguments, 1);
       const argsNum = args2.length;
       const isLastArgCb = typeof args2[argsNum - 1] === "function";
@@ -4390,8 +4390,8 @@ var require_browser = __commonJS({
           throw new Error("Too few arguments provided");
         }
         if (argsNum === 2) {
-          cb = text;
-          text = canvas;
+          cb = text3;
+          text3 = canvas;
           canvas = opts = void 0;
         } else if (argsNum === 3) {
           if (canvas.getContext && typeof cb === "undefined") {
@@ -4399,8 +4399,8 @@ var require_browser = __commonJS({
             opts = void 0;
           } else {
             cb = opts;
-            opts = text;
-            text = canvas;
+            opts = text3;
+            text3 = canvas;
             canvas = void 0;
           }
         }
@@ -4409,16 +4409,16 @@ var require_browser = __commonJS({
           throw new Error("Too few arguments provided");
         }
         if (argsNum === 1) {
-          text = canvas;
+          text3 = canvas;
           canvas = opts = void 0;
         } else if (argsNum === 2 && !canvas.getContext) {
-          opts = text;
-          text = canvas;
+          opts = text3;
+          text3 = canvas;
           canvas = void 0;
         }
         return new Promise(function(resolve3, reject) {
           try {
-            const data = QRCode2.create(text, opts);
+            const data = QRCode2.create(text3, opts);
             resolve3(renderFunc(data, canvas, opts));
           } catch (e) {
             reject(e);
@@ -4426,7 +4426,7 @@ var require_browser = __commonJS({
         });
       }
       try {
-        const data = QRCode2.create(text, opts);
+        const data = QRCode2.create(text3, opts);
         cb(null, renderFunc(data, canvas, opts));
       } catch (e) {
         cb(e);
@@ -4450,8 +4450,8 @@ var require_server = __commonJS({
     var Utf8Renderer = require_utf8();
     var TerminalRenderer = require_terminal2();
     var SvgRenderer = require_svg();
-    function checkParams(text, opts, cb) {
-      if (typeof text === "undefined") {
+    function checkParams(text3, opts, cb) {
+      if (typeof text3 === "undefined") {
         throw new Error("String required as first argument");
       }
       if (typeof cb === "undefined") {
@@ -4498,11 +4498,11 @@ var require_server = __commonJS({
           return Utf8Renderer;
       }
     }
-    function render(renderFunc, text, params) {
+    function render(renderFunc, text3, params) {
       if (!params.cb) {
         return new Promise(function(resolve3, reject) {
           try {
-            const data = QRCode2.create(text, params.opts);
+            const data = QRCode2.create(text3, params.opts);
             return renderFunc(data, params.opts, function(err, data2) {
               return err ? reject(err) : resolve3(data2);
             });
@@ -4512,7 +4512,7 @@ var require_server = __commonJS({
         });
       }
       try {
-        const data = QRCode2.create(text, params.opts);
+        const data = QRCode2.create(text3, params.opts);
         return renderFunc(data, params.opts, params.cb);
       } catch (e) {
         params.cb(e);
@@ -4520,43 +4520,43 @@ var require_server = __commonJS({
     }
     exports.create = QRCode2.create;
     exports.toCanvas = require_browser().toCanvas;
-    exports.toString = function toString(text, opts, cb) {
-      const params = checkParams(text, opts, cb);
+    exports.toString = function toString(text3, opts, cb) {
+      const params = checkParams(text3, opts, cb);
       const type = params.opts ? params.opts.type : void 0;
       const renderer = getStringRendererFromType(type);
-      return render(renderer.render, text, params);
+      return render(renderer.render, text3, params);
     };
-    exports.toDataURL = function toDataURL(text, opts, cb) {
-      const params = checkParams(text, opts, cb);
+    exports.toDataURL = function toDataURL(text3, opts, cb) {
+      const params = checkParams(text3, opts, cb);
       const renderer = getRendererFromType(params.opts.type);
-      return render(renderer.renderToDataURL, text, params);
+      return render(renderer.renderToDataURL, text3, params);
     };
-    exports.toBuffer = function toBuffer(text, opts, cb) {
-      const params = checkParams(text, opts, cb);
+    exports.toBuffer = function toBuffer(text3, opts, cb) {
+      const params = checkParams(text3, opts, cb);
       const renderer = getRendererFromType(params.opts.type);
-      return render(renderer.renderToBuffer, text, params);
+      return render(renderer.renderToBuffer, text3, params);
     };
-    exports.toFile = function toFile(path, text, opts, cb) {
-      if (typeof path !== "string" || !(typeof text === "string" || typeof text === "object")) {
+    exports.toFile = function toFile(path, text3, opts, cb) {
+      if (typeof path !== "string" || !(typeof text3 === "string" || typeof text3 === "object")) {
         throw new Error("Invalid argument");
       }
       if (arguments.length < 3 && !canPromise()) {
         throw new Error("Too few arguments provided");
       }
-      const params = checkParams(text, opts, cb);
+      const params = checkParams(text3, opts, cb);
       const type = params.opts.type || getTypeFromFilename(path);
       const renderer = getRendererFromType(type);
       const renderToFile = renderer.renderToFile.bind(null, path);
-      return render(renderToFile, text, params);
+      return render(renderToFile, text3, params);
     };
-    exports.toFileStream = function toFileStream(stream, text, opts) {
+    exports.toFileStream = function toFileStream(stream, text3, opts) {
       if (arguments.length < 2) {
         throw new Error("Too few arguments provided");
       }
-      const params = checkParams(text, opts, stream.emit.bind(stream, "error"));
+      const params = checkParams(text3, opts, stream.emit.bind(stream, "error"));
       const renderer = getRendererFromType("png");
       const renderToFileStream = renderer.renderToFileStream.bind(null, stream);
-      render(renderToFileStream, text, params);
+      render(renderToFileStream, text3, params);
     };
   }
 });
@@ -4589,11 +4589,11 @@ function createAgentTransport({ origin = HEMING_ORIGIN, fetchImpl } = {}) {
     request.once("error", reject);
     request.end(options.body);
   }));
-  const api = async (path, { token: token3, body, method = body ? "POST" : "GET", signal } = {}) => {
+  const api = async (path, { token: token4, body, method = body ? "POST" : "GET", signal } = {}) => {
     if (!path.startsWith("/api/v1/")) throw Error("INVALID_AGENT_API_PATH");
     const response = await transportFetch(origin + path, { method, redirect: "error", headers: {
       "Content-Type": "application/json",
-      ...token3 ? { "x-device-token": token3 } : {}
+      ...token4 ? { "x-device-token": token4 } : {}
     }, ...body ? { body: JSON.stringify(body) } : {}, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15e3)]) : AbortSignal.timeout(15e3) });
     const result = await response.json();
     if (!response.ok) throw Object.assign(Error(result.error || "AGENT_REQUEST_FAILED"), { status: response.status });
@@ -5203,14 +5203,14 @@ var bitMask = (n) => {
   asafenumber(n, "n");
   return (_1n << BigInt(n)) - _1n;
 };
-function validateObject(object, fields = {}, optFields = {}, title = "object") {
-  aobject2(object, title);
+function validateObject(object2, fields = {}, optFields = {}, title = "object") {
+  aobject2(object2, title);
   aobject2(fields, "fields");
   aobject2(optFields, "optFields");
   function checkField(fieldName, expectedType, isOpt) {
     const label = title === "object" ? `param "${String(fieldName)}"` : `"${title}.${String(fieldName)}"`;
-    const val = object[fieldName];
-    if (!Object.hasOwn(object, fieldName) && (isOpt ? val !== void 0 : expectedType !== "function")) {
+    const val = object2[fieldName];
+    if (!Object.hasOwn(object2, fieldName) && (isOpt ? val !== void 0 : expectedType !== "function")) {
       throw new TypeError(`${label} is invalid: expected own property`);
     }
     if (isOpt && val === void 0)
@@ -7251,15 +7251,44 @@ function normalizeLibraryDocument(value) {
   return { version: 1, title: value.title.trim(), sourceName: value.sourceName };
 }
 
-// shared/agentWork.mjs
+// shared/agentDocumentReferences.mjs
+var AGENT_REFERENCE_LIMIT = 8;
+var AGENT_REFERENCE_BODY_LIMIT = 16384;
 var token = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
+function normalizeAgentReference(value) {
+  if (!value || !token(value.documentId) || typeof value.title !== "string" || !value.title.trim() || value.title.length > 80 || typeof value.body !== "string" || !value.body.trim() || value.body.length > AGENT_REFERENCE_BODY_LIMIT || !Number.isSafeInteger(value.revision) || value.revision < 1 || value.revision > 1e6 || value.sourceName !== void 0 && (typeof value.sourceName !== "string" || value.sourceName.length > 64))
+    throw Error("INVALID_AGENT_REFERENCE");
+  return {
+    documentId: value.documentId,
+    title: value.title,
+    body: value.body,
+    revision: value.revision,
+    sourceName: value.sourceName || ""
+  };
+}
+function normalizeAgentReferences(values) {
+  if (!Array.isArray(values) || !values.length || values.length > AGENT_REFERENCE_LIMIT) throw Error("INVALID_AGENT_REFERENCES");
+  const refs = values.map(normalizeAgentReference);
+  if (new Set(refs.map((item) => item.documentId)).size !== refs.length) throw Error("DUPLICATE_AGENT_REFERENCE");
+  return refs;
+}
+function agentReferencesBody(refs) {
+  return refs.length === 1 ? refs[0].body : refs.map((ref) => `# ${ref.title} \xB7 V${ref.revision}
+
+${ref.body}`).join("\n\n---\n\n");
+}
+
+// shared/agentWork.mjs
+var token2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
 var AGENT_TASK_LABELS = Object.freeze({ working: "\u6B63\u5728\u5904\u7406", waiting: "\u7B49\u5F85\u4F60\u7684\u8865\u5145", stopping: "\u6B63\u5728\u8BF7\u6C42\u505C\u6B62", completed: "\u5DF2\u5B8C\u6210", failed: "\u672C\u6B21\u5904\u7406\u672A\u5B8C\u6210", stopped: "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406" });
 function normalizeAgentDocument(value) {
-  if (!value || value.version !== 1 || !token(value.documentId) || typeof value.title !== "string" || !value.title.trim() || value.title.length > 80 || typeof value.body !== "string" || !value.body.trim() || value.body.length > 16384) throw Error("INVALID_AGENT_DOCUMENT");
-  return { version: 1, documentId: value.documentId, title: value.title, body: value.body };
+  if (!value || value.version !== 1 || !token2(value.documentId) || typeof value.title !== "string" || !value.title.trim() || value.title.length > 80 || typeof value.body !== "string" || !value.body.trim() || value.body.length > 16384) throw Error("INVALID_AGENT_DOCUMENT");
+  const references = value.references === void 0 ? void 0 : normalizeAgentReferences(value.references);
+  if (references && (agentReferencesBody(references) !== value.body || value.documentId !== references[0].documentId || value.title !== (references.length === 1 ? references[0].title : `${references.length} \u4EFD\u8D44\u6599`))) throw Error("INVALID_AGENT_REFERENCES");
+  return { version: 1, documentId: value.documentId, title: value.title, body: value.body, ...references ? { references } : {} };
 }
 function normalizeAgentWork(value) {
-  if (!value || value.version !== 1 || !["task", "question"].includes(value.kind) || !token(value.id) || !token(value.requestMessageId) || !token(value.ownerIdentityId) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5)
+  if (!value || value.version !== 1 || !["task", "question"].includes(value.kind) || !token2(value.id) || !token2(value.requestMessageId) || !token2(value.ownerIdentityId) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5)
     throw Error("INVALID_AGENT_WORK");
   const base = {
     version: 1,
@@ -7286,7 +7315,7 @@ function normalizeAgentWork(value) {
   };
 }
 function normalizeAgentWorkAction(data) {
-  if (!data || !["task", "question"].includes(data.kind) || !token(data.interactionId) || !token(data.requestMessageId) || !token(data.targetMessageId) || (data.kind === "task" ? data.action !== "stop" : data.action !== "answer" || typeof data.answer !== "string" || !data.answer.trim() || data.answer.length > 2e3)) throw Error("INVALID_AGENT_ACTION");
+  if (!data || !["task", "question"].includes(data.kind) || !token2(data.interactionId) || !token2(data.requestMessageId) || !token2(data.targetMessageId) || (data.kind === "task" ? data.action !== "stop" : data.action !== "answer" || typeof data.answer !== "string" || !data.answer.trim() || data.answer.length > 2e3)) throw Error("INVALID_AGENT_ACTION");
   return {
     kind: data.kind,
     interactionId: data.interactionId,
@@ -7320,9 +7349,9 @@ function normalizeAgentReply(value) {
 // shared/agentInteraction.mjs
 var APPROVAL_ACTIONS = Object.freeze({ once: "\u5141\u8BB8\u4E00\u6B21", session: "\u672C\u6B21\u4F1A\u8BDD\u5141\u8BB8", always: "\u59CB\u7EC8\u5141\u8BB8", deny: "\u62D2\u7EDD" });
 var STATES2 = /* @__PURE__ */ new Set(["pending", "approved", "denied", "expired", "closed", "failed"]);
-var token2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
+var token3 = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
 function normalizeAgentInteraction(value) {
-  if (!value || value.version !== 1 || value.kind !== "approval" || !token2(value.id) || !token2(value.requestMessageId) || !token2(value.ownerIdentityId) || !STATES2.has(value.status) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5 || typeof value.command !== "string" || !value.command.trim() || value.command.length > 6e3 || typeof value.reason !== "string" || value.reason.length > 2e3 || !Array.isArray(value.actions) || !value.actions.length || value.actions.length > 4 || value.actions.some((action) => !Object.hasOwn(APPROVAL_ACTIONS, action)) || new Set(value.actions).size !== value.actions.length || !value.actions.includes("deny") || typeof value.expiresAt !== "string" || !Number.isFinite(Date.parse(value.expiresAt)) || value.choice !== void 0 && !value.actions.includes(value.choice)) throw Error("INVALID_AGENT_INTERACTION");
+  if (!value || value.version !== 1 || value.kind !== "approval" || !token3(value.id) || !token3(value.requestMessageId) || !token3(value.ownerIdentityId) || !STATES2.has(value.status) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5 || typeof value.command !== "string" || !value.command.trim() || value.command.length > 6e3 || typeof value.reason !== "string" || value.reason.length > 2e3 || !Array.isArray(value.actions) || !value.actions.length || value.actions.length > 4 || value.actions.some((action) => !Object.hasOwn(APPROVAL_ACTIONS, action)) || new Set(value.actions).size !== value.actions.length || !value.actions.includes("deny") || typeof value.expiresAt !== "string" || !Number.isFinite(Date.parse(value.expiresAt)) || value.choice !== void 0 && !value.actions.includes(value.choice)) throw Error("INVALID_AGENT_INTERACTION");
   return {
     version: 1,
     kind: "approval",
@@ -7340,7 +7369,7 @@ function normalizeAgentInteraction(value) {
 }
 function normalizeAgentAction(data) {
   if (data?.kind) return normalizeAgentWorkAction(data);
-  if (!data || !token2(data.interactionId) || !token2(data.requestMessageId) || !token2(data.targetMessageId) || !Object.hasOwn(APPROVAL_ACTIONS, data.action)) throw Error("INVALID_AGENT_ACTION");
+  if (!data || !token3(data.interactionId) || !token3(data.requestMessageId) || !token3(data.targetMessageId) || !Object.hasOwn(APPROVAL_ACTIONS, data.action)) throw Error("INVALID_AGENT_ACTION");
   return {
     interactionId: data.interactionId,
     requestMessageId: data.requestMessageId,
@@ -7358,6 +7387,179 @@ function mergeAgentInteraction(message, event, actorIdentityId) {
 }
 function approvalStatusLabel(status) {
   return { pending: "\u7B49\u5F85\u4F60\u7684\u6279\u51C6", approved: "\u5DF2\u5141\u8BB8", denied: "\u5DF2\u62D2\u7EDD", expired: "\u6279\u51C6\u8BF7\u6C42\u5DF2\u8FC7\u671F", closed: "\u8BF7\u6C42\u5DF2\u7ED3\u675F", failed: "\u6279\u51C6\u8BF7\u6C42\u672A\u5B8C\u6210" }[status] || "\u8BF7\u6C42\u4E0D\u53EF\u7528";
+}
+
+// shared/agentTaskExecutionDetails.mjs
+var runStates = /* @__PURE__ */ new Set(["queued", "running", "stopping", "completed", "failed", "stopped", "interrupted", "unknown"]);
+var plans = /* @__PURE__ */ new Set(["enabled", "paused", "ended", "finished", "none"]);
+var fail = () => {
+  throw Error("INVALID_AGENT_MANAGED_TASK");
+};
+var text = (value, limit, optional = false) => {
+  if (optional && value == null) return "";
+  if (typeof value !== "string" || value.length > limit || !optional && !value) fail();
+  return value;
+};
+var date = (value) => {
+  if (value == null) return null;
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) fail();
+  return new Date(value).toISOString();
+};
+function normalizeTaskExecutionFields(value) {
+  const result = {};
+  if (value.planState != null) {
+    if (!plans.has(value.planState)) fail();
+    result.planState = value.planState;
+  }
+  if (value.runState != null) {
+    if (!runStates.has(value.runState)) fail();
+    result.runState = value.runState;
+  }
+  if (value.executionId != null) result.executionId = text(value.executionId, 160);
+  if (value.startedAt != null) result.startedAt = date(value.startedAt);
+  if (value.canStopCurrent != null) {
+    if (typeof value.canStopCurrent !== "boolean") fail();
+    result.canStopCurrent = value.canStopCurrent;
+  }
+  return result;
+}
+function normalizeTaskExecutions(value) {
+  if (value == null) return void 0;
+  if (!Array.isArray(value) || value.length > 15) fail();
+  const result = value.map((item) => {
+    if (!item || typeof item !== "object" || !runStates.has(item.state)) fail();
+    const durationMs = item.durationMs;
+    if (durationMs != null && (!Number.isSafeInteger(durationMs) || durationMs < 0 || durationMs > 31536e6)) fail();
+    return {
+      id: text(item.id, 160),
+      at: date(item.at),
+      state: item.state,
+      result: text(item.result, 32e3, true),
+      error: text(item.error, 1e3, true),
+      finishedAt: date(item.finishedAt),
+      ...durationMs != null ? { durationMs } : {}
+    };
+  });
+  if (new Set(result.map((item) => item.id)).size !== result.length || JSON.stringify(result).length > 1e5) fail();
+  return result;
+}
+
+// shared/agentManagedTasks.mjs
+var actions = /* @__PURE__ */ new Set(["list", "create", "update", "pause", "resume", "cancel", "run", "retry", "detail", "stop"]);
+var states = /* @__PURE__ */ new Set(["scheduled", "running", "paused", "completed", "failed", "cancelled", "stopping", "interrupted"]);
+var kinds = /* @__PURE__ */ new Set(["once", "recurring", "background"]);
+var object = (value) => value && typeof value === "object" && !Array.isArray(value);
+var fail2 = () => {
+  throw Error("INVALID_AGENT_MANAGED_TASK");
+};
+function text2(value, limit, empty = false) {
+  if (typeof value !== "string" || value.length > limit || !empty && !value.trim()) fail2();
+  return value;
+}
+function date2(value, optional = false) {
+  if (optional && value == null) return null;
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) fail2();
+  return new Date(value).toISOString();
+}
+function normalizeManagedTaskDefinition(value) {
+  if (!object(value) || !kinds.has(value.kind)) fail2();
+  const result = { kind: value.kind, title: text2(value.title, 80), prompt: text2(value.prompt, 8e3) };
+  if (value.kind === "once") result.at = date2(value.at);
+  if (value.kind === "recurring") {
+    if (!["daily", "weekly", "interval"].includes(value.repeat)) fail2();
+    result.repeat = value.repeat;
+    if (value.repeat === "interval") {
+      if (!Number.isInteger(value.minutes) || value.minutes < 1 || value.minutes > 525600) fail2();
+      result.minutes = value.minutes;
+    } else {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time || "")) fail2();
+      result.time = value.time;
+      if (value.repeat === "weekly") {
+        if (!Number.isInteger(value.weekday) || value.weekday < 0 || value.weekday > 6) fail2();
+        result.weekday = value.weekday;
+      }
+    }
+  }
+  return result;
+}
+function job(value) {
+  if (!object(value) || !kinds.has(value.kind) || !states.has(value.state) || !Array.isArray(value.actions) || value.actions.some((a) => !actions.has(a))) fail2();
+  return {
+    id: text2(value.id, 128),
+    title: text2(value.title, 200),
+    kind: value.kind,
+    state: value.state,
+    revision: text2(value.revision, 128),
+    scheduleLabel: text2(value.scheduleLabel || "", 200, true),
+    nextRunAt: date2(value.nextRunAt, true),
+    lastRunAt: date2(value.lastRunAt, true),
+    createdAt: date2(value.createdAt, true),
+    actions: [...new Set(value.actions)],
+    error: text2(value.error || "", 1e3, true),
+    ...normalizeTaskExecutionFields(value)
+  };
+}
+function normalizeAgentManagedTasks(value) {
+  if (!object(value) || value.version !== 1) fail2();
+  if (value.kind === "request") {
+    if (!actions.has(value.action)) fail2();
+    const result2 = { version: 1, kind: "request", requestId: text2(value.requestId, 128), action: value.action };
+    if (value.detailVersion != null) {
+      if (value.detailVersion !== 2) fail2();
+      result2.detailVersion = 2;
+    }
+    if (value.action === "list" && value.offset != null) {
+      if (!Number.isSafeInteger(value.offset) || value.offset < 0) fail2();
+      result2.offset = value.offset;
+    }
+    if (!["list", "create"].includes(value.action)) result2.jobId = text2(value.jobId, 128);
+    if (!["list", "create", "detail"].includes(value.action)) result2.revision = text2(value.revision, 128);
+    if (["create", "update"].includes(value.action)) result2.definition = normalizeManagedTaskDefinition(value.definition);
+    return result2;
+  }
+  if (value.kind !== "snapshot" || !Number.isSafeInteger(value.revision) || value.revision < 1 || !Array.isArray(value.jobs) || value.jobs.length > 100) fail2();
+  const result = {
+    version: 1,
+    kind: "snapshot",
+    ownerIdentityId: text2(String(value.ownerIdentityId || ""), 64),
+    revision: value.revision,
+    generatedAt: date2(value.generatedAt),
+    timeZone: text2(value.timeZone, 80),
+    jobs: value.jobs.map(job)
+  };
+  if (value.total != null || value.offset != null) {
+    if (!Number.isSafeInteger(value.total) || !Number.isSafeInteger(value.offset) || value.offset < 0 || value.total < value.jobs.length) fail2();
+    result.total = value.total;
+    result.offset = value.offset;
+  }
+  if (new Set(result.jobs.map((item) => item.id)).size !== result.jobs.length) fail2();
+  if (value.reply) {
+    const reply = value.reply;
+    if (!object(reply) || typeof reply.ok !== "boolean") fail2();
+    result.reply = {
+      requestId: text2(reply.requestId, 128),
+      ok: reply.ok,
+      ...reply.jobId ? { jobId: text2(reply.jobId, 128) } : {},
+      ...reply.error ? { error: text2(reply.error, 80) } : {}
+    };
+    if (reply.detail) {
+      const detail = reply.detail;
+      if (!object(detail) || !Array.isArray(detail.history) || detail.history.length > 10) fail2();
+      result.reply.detail = {
+        jobId: text2(detail.jobId, 128),
+        prompt: text2(detail.prompt || "", 8e3, true),
+        result: text2(detail.result || "", 32e3, true),
+        truncated: detail.truncated === true,
+        definition: detail.definition ? normalizeManagedTaskDefinition(detail.definition) : null,
+        history: detail.history.map((item) => ({ at: text2(item.at, 80), result: text2(item.result || "", 32e3, true) })),
+        ...detail.executions != null ? { executions: normalizeTaskExecutions(detail.executions) } : {},
+        ...detail.job ? { job: job(detail.job) } : {},
+        ...detail.resultAt ? { resultAt: date2(detail.resultAt) } : {}
+      };
+      if (JSON.stringify(result.reply.detail).length > 1e5) fail2();
+    }
+  }
+  return result;
 }
 
 // shared/groupEvents.mjs
@@ -7379,9 +7581,9 @@ function keyVersion(value) {
   return version;
 }
 function boundedText(value, maximum, error) {
-  const text = String(value || "").trim();
-  if (text.length > maximum) throw new Error(error);
-  return text;
+  const text3 = String(value || "").trim();
+  if (text3.length > maximum) throw new Error(error);
+  return text3;
 }
 function groupAvatar(value) {
   const avatar = String(value || "");
@@ -7442,6 +7644,7 @@ var CHAT_EVENT_PROTOCOL = "clear-signal.chat-event";
 var CHAT_EVENT_VERSION = 1;
 var MESSAGE_MUTATION_WINDOW_MS = 6 * 60 * 60 * 1e3;
 var EVENT_TYPES = /* @__PURE__ */ new Set([
+  "agent.tasks",
   "agent.action",
   "agent.reply",
   "message.create",
@@ -7622,6 +7825,8 @@ function validateData(type, value) {
       if (data.contentType !== "text" || data.forwardedFrom || data.whisper || data.ephemeral || data.agentReply) throw Error("INVALID_AGENT_INTERACTION_MESSAGE");
       data.agentInteraction = normalizeAgentInteraction(data.agentInteraction);
     }
+  } else if (type === "agent.tasks") {
+    return normalizeAgentManagedTasks(data);
   } else if (type === "agent.action") {
     return normalizeAgentAction(data);
   } else if (type === "agent.reply") {
@@ -7864,7 +8069,7 @@ function streamError(code, cause) {
 }
 async function listenToSse({
   url,
-  token: token3,
+  token: token4,
   onEvent,
   signal,
   connectTimeoutMs = 12e3,
@@ -7882,7 +8087,7 @@ async function listenToSse({
   let reader;
   try {
     const response = await fetchImpl(url, {
-      headers: { "x-device-token": token3 },
+      headers: { "x-device-token": token4 },
       signal: controller2.signal
     });
     if (!response.ok || !response.body?.getReader)
@@ -8578,10 +8783,10 @@ function validateUnreadHint(value) {
     throw Error("INVALID_UNREAD_HINT");
   for (const tokens of [value.add, value.remove]) {
     if (!Array.isArray(tokens) || tokens.length > MAX_TOKENS || new Set(tokens).size !== tokens.length) throw Error("INVALID_UNREAD_HINT");
-    for (const token3 of tokens)
-      if (typeof token3 !== "string" || !HASH_PATTERN.test(token3)) throw Error("INVALID_UNREAD_HINT");
+    for (const token4 of tokens)
+      if (typeof token4 !== "string" || !HASH_PATTERN.test(token4)) throw Error("INVALID_UNREAD_HINT");
   }
-  if (value.add.some((token3) => value.remove.includes(token3))) throw Error("INVALID_UNREAD_HINT");
+  if (value.add.some((token4) => value.remove.includes(token4))) throw Error("INVALID_UNREAD_HINT");
   return { version: 1, add: [...value.add], remove: [...value.remove] };
 }
 function unreadHintForPayload(conversationId, actorIdentityId, payload) {
@@ -8592,16 +8797,16 @@ function unreadHintForPayload(conversationId, actorIdentityId, payload) {
   for (const event of events) {
     if (event?.type === "message.create") {
       if (event.data?.agentWork?.kind === "task") continue;
-      const token3 = unreadMessageToken(conversationId, actorIdentityId, event.data?.messageId);
-      remove.delete(token3);
-      add.add(token3);
+      const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data?.messageId);
+      remove.delete(token4);
+      add.add(token4);
     } else if (event?.type === "message.delete") {
-      const token3 = unreadMessageToken(conversationId, actorIdentityId, event.data?.targetMessageId);
-      add.delete(token3);
-      remove.add(token3);
+      const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data?.targetMessageId);
+      add.delete(token4);
+      remove.add(token4);
     }
   }
-  if (!batch && !add.size && !remove.size && payload?.data?.agentWork?.kind !== "task") return void 0;
+  if (!batch && !add.size && !remove.size && payload?.data?.agentWork?.kind !== "task" && payload?.type !== "agent.tasks") return void 0;
   return validateUnreadHint({ version: 1, add: [...add], remove: [...remove] });
 }
 
@@ -8763,65 +8968,65 @@ function createSecureAgentChannel({ transport, state, persist }) {
 }
 
 // integrations/heming-agent/replyDelivery.mjs
-function splitAgentReply(text, limit = 16384) {
+function splitAgentReply(text3, limit = 16384) {
   const chunks = [];
-  for (let offset = 0; offset < text.length; ) {
-    let end = Math.min(offset + limit, text.length);
-    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
-    chunks.push(text.slice(offset, end));
+  for (let offset = 0; offset < text3.length; ) {
+    let end = Math.min(offset + limit, text3.length);
+    if (end < text3.length && /[\uD800-\uDBFF]/.test(text3[end - 1])) end--;
+    chunks.push(text3.slice(offset, end));
     offset = end;
   }
   return chunks.length ? chunks : [""];
 }
 function createReplyDelivery({ channel, state, persist, beforeClear = async () => {
 } }) {
-  async function update(job, text, status) {
-    if (!job.created) {
+  async function update(job2, text3, status) {
+    if (!job2.created) {
       await channel.send(createChatEvent("message.create", {
-        messageId: job.replyId,
+        messageId: job2.replyId,
         contentType: "text",
-        text,
-        agentReply: { requestMessageId: job.requestMessageId, revision: job.revision, state: status }
-      }, { eventId: job.replyId }));
-      job.created = true;
+        text: text3,
+        agentReply: { requestMessageId: job2.requestMessageId, revision: job2.revision, state: status }
+      }, { eventId: job2.replyId }));
+      job2.created = true;
       persist();
       return;
     }
-    job.revision++;
-    job.text = splitAgentReply(text)[0];
+    job2.revision++;
+    job2.text = splitAgentReply(text3)[0];
     persist();
     await channel.send(createChatEvent("agent.reply", {
-      targetMessageId: job.replyId,
-      text: job.text,
-      agentReply: { requestMessageId: job.requestMessageId, revision: job.revision, state: status }
+      targetMessageId: job2.replyId,
+      text: job2.text,
+      agentReply: { requestMessageId: job2.requestMessageId, revision: job2.revision, state: status }
     }));
   }
-  function prepare(job, text, status) {
-    job.finalStatus = status;
-    job.parts = splitAgentReply(text).map((text2) => ({ id: crypto.randomUUID(), text: text2 }));
-    job.deliveredParts = 0;
+  function prepare(job2, text3, status) {
+    job2.finalStatus = status;
+    job2.parts = splitAgentReply(text3).map((text4) => ({ id: crypto.randomUUID(), text: text4 }));
+    job2.deliveredParts = 0;
     persist();
   }
-  async function finish(job) {
+  async function finish(job2) {
     await channel.flushOutbox();
-    if (!job.finalStatus) prepare(job, "\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u81EA\u52A8\u91CD\u8DD1\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002", "failed");
-    if (!job.deliveredParts) {
-      await update(job, job.parts[0].text, job.finalStatus);
-      job.deliveredParts = 1;
+    if (!job2.finalStatus) prepare(job2, "\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u81EA\u52A8\u91CD\u8DD1\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002", "failed");
+    if (!job2.deliveredParts) {
+      await update(job2, job2.parts[0].text, job2.finalStatus);
+      job2.deliveredParts = 1;
       persist();
     }
-    for (; job.deliveredParts < job.parts.length; ) {
-      const part = job.parts[job.deliveredParts];
+    for (; job2.deliveredParts < job2.parts.length; ) {
+      const part = job2.parts[job2.deliveredParts];
       await channel.send(createChatEvent("message.create", {
         messageId: part.id,
         contentType: "text",
         text: part.text,
-        agentReply: { requestMessageId: job.requestMessageId, revision: 0, state: job.finalStatus }
+        agentReply: { requestMessageId: job2.requestMessageId, revision: 0, state: job2.finalStatus }
       }, { eventId: part.id }));
-      job.deliveredParts++;
+      job2.deliveredParts++;
       persist();
     }
-    await beforeClear(job);
+    await beforeClear(job2);
     state.job = null;
     persist();
   }
@@ -8848,7 +9053,7 @@ function createInteractionDelivery({ channel, state, persist }) {
   async function send(value, targetMessageId) {
     const interaction = normalizeAgentInteraction(value);
     if (interaction.ownerIdentityId !== String(state.session.ownerIdentityId)) throw Error("AGENT_RECIPIENT_MISMATCH");
-    const text = `\u9700\u8981\u4F60\u7684\u6279\u51C6
+    const text3 = `\u9700\u8981\u4F60\u7684\u6279\u51C6
 ${interaction.command}
 ${interaction.reason}
 ${approvalStatusLabel(interaction.status)}`;
@@ -8857,19 +9062,19 @@ ${approvalStatusLabel(interaction.status)}`;
         throw Error("AGENT_APPROVAL_TASK_MISMATCH");
       if (state.interactions[interaction.id]) throw Error("AGENT_APPROVAL_ALREADY_SENT");
       const id = crypto.randomUUID();
-      const message = { id, senderIdentityId: state.session.identity.identityId, text, agentInteraction: interaction };
+      const message = { id, senderIdentityId: state.session.identity.identityId, text: text3, agentInteraction: interaction };
       state.interactions[interaction.id] = message;
       for (const [key, item] of Object.entries(state.interactions)) {
         if (Object.keys(state.interactions).length <= 128) break;
         if (item.agentInteraction.status !== "pending") delete state.interactions[key];
       }
       persist();
-      await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text, agentInteraction: interaction }, { eventId: id }));
+      await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text: text3, agentInteraction: interaction }, { eventId: id }));
       return id;
     }
     const previous = state.interactions[interaction.id];
     if (!previous || previous.id !== targetMessageId) throw Error("AGENT_APPROVAL_NOT_FOUND");
-    const event = createChatEvent("message.edit", { targetMessageId, text, agentInteraction: interaction });
+    const event = createChatEvent("message.edit", { targetMessageId, text: text3, agentInteraction: interaction });
     const next = mergeAgentInteraction(previous, event, state.session.identity.identityId);
     if (next === previous) throw Error("AGENT_APPROVAL_STATE_CONFLICT");
     await channel.send(event);
@@ -8909,14 +9114,14 @@ function createWorkDelivery({ channel, state, persist }) {
     return state.job;
   }
   return {
-    begin: (job) => serial(async () => {
-      job.work = { messageId: crypto.randomUUID(), created: false };
-      job.questions = {};
-      await publish(job.work, {
+    begin: (job2) => serial(async () => {
+      job2.work = { messageId: crypto.randomUUID(), created: false };
+      job2.questions = {};
+      await publish(job2.work, {
         version: 1,
         kind: "task",
-        id: job.requestMessageId,
-        requestMessageId: job.requestMessageId,
+        id: job2.requestMessageId,
+        requestMessageId: job2.requestMessageId,
         ownerIdentityId: owner,
         revision: 0,
         status: "working",
@@ -8924,44 +9129,74 @@ function createWorkDelivery({ channel, state, persist }) {
       });
     }),
     update: (requestId, update) => serial(async () => {
-      const job = active(requestId);
-      if (!job.work) throw Error("AGENT_TASK_UNSUPPORTED");
-      const old = job.work.card;
+      const job2 = active(requestId);
+      if (!job2.work) throw Error("AGENT_TASK_UNSUPPORTED");
+      const old = job2.work.card;
       if (["completed", "failed", "stopped"].includes(old.status)) return;
       if (old.status === "stopping" && !["stopped", "failed", "completed"].includes(update.status)) return;
-      await publish(job.work, { ...old, status: update.status, canStop: update.canStop === true, revision: old.revision + 1 });
+      await publish(job2.work, { ...old, status: update.status, canStop: update.canStop === true, revision: old.revision + 1 });
     }),
     question: (requestId, value, targetMessageId) => serial(async () => {
-      const job = active(requestId);
+      const job2 = active(requestId);
       const card = normalizeAgentWork(value);
       if (card.kind !== "question" || card.requestMessageId !== requestId || card.ownerIdentityId !== owner) throw Error("AGENT_QUESTION_MISMATCH");
-      let entry = job.questions[card.id];
+      let entry = job2.questions[card.id];
       if (!entry) {
-        if (card.status !== "pending" || card.revision !== 0 || targetMessageId || Object.keys(job.questions).length >= 64) throw Error("AGENT_QUESTION_CLOSED");
-        entry = job.questions[card.id] = { messageId: crypto.randomUUID(), created: false };
+        if (card.status !== "pending" || card.revision !== 0 || targetMessageId || Object.keys(job2.questions).length >= 64) throw Error("AGENT_QUESTION_CLOSED");
+        entry = job2.questions[card.id] = { messageId: crypto.randomUUID(), created: false };
       } else if (entry.messageId !== targetMessageId || entry.card.status !== "pending" || card.revision <= entry.card.revision || card.status === "pending" || card.question !== entry.card.question || card.expiresAt !== entry.card.expiresAt || card.multiSelect !== entry.card.multiSelect || JSON.stringify(card.choices) !== JSON.stringify(entry.card.choices)) throw Error("AGENT_QUESTION_CLOSED");
       return publish(entry, card);
     }),
     accepts(action) {
-      const job = state.job;
-      if (!job?.work || action.requestMessageId !== job.requestMessageId) return false;
-      const entry = action.kind === "task" ? job.work : job.questions?.[action.interactionId];
+      const job2 = state.job;
+      if (!job2?.work || action.requestMessageId !== job2.requestMessageId) return false;
+      const entry = action.kind === "task" ? job2.work : job2.questions?.[action.interactionId];
       if (!entry || entry.messageId !== action.targetMessageId || entry.card.id !== action.interactionId) return false;
       if (action.kind === "task") return entry.card.canStop && ["working", "waiting"].includes(entry.card.status);
       return entry.card.status === "pending" && Date.parse(entry.card.expiresAt) > Date.now();
     },
-    finish: (job) => serial(async () => {
-      if (!job.work) return;
-      for (const entry of Object.values(job.questions || {})) if (entry.card.status === "pending")
+    finish: (job2) => serial(async () => {
+      if (!job2.work) return;
+      for (const entry of Object.values(job2.questions || {})) if (entry.card.status === "pending")
         await publish(entry, { ...entry.card, status: "closed", revision: entry.card.revision + 1 });
-      if (!["completed", "failed", "stopped"].includes(job.work.card.status))
-        await publish(job.work, { ...job.work.card, status: job.finalStatus, canStop: false, revision: job.work.card.revision + 1 });
+      if (!["completed", "failed", "stopped"].includes(job2.work.card.status))
+        await publish(job2.work, { ...job2.work.card, status: job2.finalStatus, canStop: false, revision: job2.work.card.revision + 1 });
     })
+  };
+}
+
+// integrations/heming-agent/managedTaskDelivery.mjs
+function createManagedTaskDelivery({ state, persist, channel, onRequest }) {
+  state.taskRequests ||= {};
+  return {
+    enqueue(event) {
+      const data = normalizeAgentManagedTasks(event.data);
+      if (data.kind !== "request") return;
+      if (Object.keys(state.taskRequests).length >= 100 && !state.taskRequests[data.requestId]) throw Error("AGENT_TASK_REQUEST_LIMIT");
+      state.taskRequests[data.requestId] = data;
+    },
+    async flush() {
+      for (const data of Object.values(state.taskRequests)) await onRequest({
+        ...data,
+        conversationId: state.session.conversationId,
+        senderIdentityId: state.session.ownerIdentityId
+      });
+    },
+    async publish(value) {
+      const data = normalizeAgentManagedTasks(value);
+      if (data.kind !== "snapshot" || data.ownerIdentityId !== String(state.session.ownerIdentityId)) throw Error("AGENT_TASK_OWNER_MISMATCH");
+      await channel.send(createChatEvent("agent.tasks", data));
+      if (data.reply) {
+        delete state.taskRequests[data.reply.requestId];
+        persist();
+      }
+    }
   };
 }
 
 // integrations/heming-agent/connector.mjs
 function createAgentConnector({ transport, store, onMessage, onAction = () => {
+}, onTaskRequest = () => {
 }, onStatus = () => {
 }, taskTimeoutMs = 6e5, taskInteractions = false }) {
   const state = store.read();
@@ -8973,18 +9208,19 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
   const work = createWorkDelivery({ channel, state, persist });
   const delivery = createReplyDelivery({ channel, state, persist, beforeClear: work.finish });
   const interactions = createInteractionDelivery({ channel, state, persist });
+  const managedTasks = createManagedTaskDelivery({ channel, state, persist, onRequest: onTaskRequest });
   let activeSync = null;
   let activeDrain = null;
   let started = false;
   let timer;
   async function execute(event, signal) {
-    const job = { requestMessageId: event.data.messageId, replyId: crypto.randomUUID(), revision: 0, text: "", created: false };
-    state.job = job;
+    const job2 = { requestMessageId: event.data.messageId, replyId: crypto.randomUUID(), revision: 0, text: "", created: false };
+    state.job = job2;
     persist();
     const deadline = AbortSignal.timeout(taskTimeoutMs);
     const taskSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
     try {
-      if (taskInteractions) await work.begin(job);
+      if (taskInteractions) await work.begin(job2);
       if (event.data.whisper || event.data.ephemeral) throw Error("AGENT_EPHEMERAL_UNSUPPORTED");
       if (event.data.contentType && event.data.contentType !== "text") throw Error("AGENT_MEDIA_UNSUPPORTED");
       const result = await abortable(onMessage({
@@ -8995,31 +9231,31 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         conversationId: state.session.conversationId,
         senderIdentityId: state.session.ownerIdentityId,
         signal: taskSignal,
-        updateTask: (update) => work.update(job.requestMessageId, update),
-        sendQuestion: (card, target) => work.question(job.requestMessageId, card, target)
+        updateTask: (update) => work.update(job2.requestMessageId, update),
+        sendQuestion: (card, target) => work.question(job2.requestMessageId, card, target)
       }), taskSignal);
-      let text = "";
+      let text3 = "";
       if (result?.[Symbol.asyncIterator]) {
         const iterator = result[Symbol.asyncIterator]();
         while (true) {
           const next = await abortable(iterator.next(), taskSignal);
           if (next.done) break;
           const delta = next.value;
-          text = delta?.mode === "snapshot" ? String(delta.text || "") : text + String(delta || "");
-          if (text.length > 131072) throw Error("AGENT_REPLY_LIMIT");
+          text3 = delta?.mode === "snapshot" ? String(delta.text || "") : text3 + String(delta || "");
+          if (text3.length > 131072) throw Error("AGENT_REPLY_LIMIT");
         }
-      } else text = String(result?.text ?? result ?? "");
+      } else text3 = String(result?.text ?? result ?? "");
       taskSignal.throwIfAborted();
-      if (!text.trim()) throw Error("AGENT_EMPTY_REPLY");
-      if (text.length > 131072) throw Error("AGENT_REPLY_LIMIT");
-      delivery.prepare(job, text, "completed");
+      if (!text3.trim()) throw Error("AGENT_EMPTY_REPLY");
+      if (text3.length > 131072) throw Error("AGENT_REPLY_LIMIT");
+      delivery.prepare(job2, text3, "completed");
     } catch (error) {
       const stopped = error.message === "AGENT_TASK_STOPPED";
       const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u652F\u6301\u6587\u5B57\u548C Markdown\uFF0C\u6682\u4E0D\u652F\u6301\u5904\u7406\u9644\u4EF6\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
-      delivery.prepare(job, explanation, stopped ? "stopped" : "failed");
+      delivery.prepare(job2, explanation, stopped ? "stopped" : "failed");
       onStatus("task-failed");
     }
-    await delivery.finish(job);
+    await delivery.finish(job2);
   }
   async function sync(signal) {
     if (!activeSync) activeSync = (async () => {
@@ -9031,11 +9267,15 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         for (const envelope of pending) {
           if (!state.processed.includes(envelope.clientMessageId)) {
             const events = normalizeChatPayload(await channel.decrypt(envelope), envelope);
-            const actions = [];
+            const actions2 = [];
             for (const event of events) {
+              if (event.type === "agent.tasks") {
+                managedTasks.enqueue(event);
+                continue;
+              }
               if (event.type === "agent.action") {
                 if (!state.handledMessages.includes(event.eventId)) {
-                  if (!event.data.kind || work.accepts(event.data)) actions.push(event);
+                  if (!event.data.kind || work.accepts(event.data)) actions2.push(event);
                   state.handledMessages = [...state.handledMessages, event.eventId].slice(-4096);
                 }
                 continue;
@@ -9046,7 +9286,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
             }
             state.processed = [...state.processed, envelope.clientMessageId].slice(-4096);
             persist();
-            for (const action of actions) await onAction({
+            for (const action of actions2) await onAction({
               ...action.data,
               eventId: action.eventId,
               conversationId: state.session.conversationId,
@@ -9060,6 +9300,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       activeSync = null;
     });
     await activeSync;
+    await managedTasks.flush();
     if (!activeDrain) activeDrain = (async () => {
       if (state.job) await delivery.finish(state.job);
       while (state.inbox.length && !signal?.aborted) {
@@ -9121,12 +9362,12 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       started = false;
     }
   }
-  async function sendText(text) {
+  async function sendText(text3) {
     const id = crypto.randomUUID();
-    await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text }, { eventId: id }));
+    await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text: text3 }, { eventId: id }));
     return id;
   }
-  return { start, sync, sendText, sendInteraction: interactions.send, session: state.session };
+  return { start, sync, sendText, sendManagedTasks: managedTasks.publish, sendInteraction: interactions.send, session: state.session };
 }
 
 // integrations/heming-agent/stdioBridge.mjs
@@ -9152,9 +9393,9 @@ function createReplyFeed(signal) {
     notify();
   };
   return {
-    snapshot(text) {
+    snapshot(text3) {
       if (!done) {
-        pending = { mode: "snapshot", text };
+        pending = { mode: "snapshot", text: text3 };
         notify();
       }
     },
@@ -9198,6 +9439,11 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
           (id) => emit2({ type: "sent", nonce: event.nonce, messageId: id }),
           () => emit2({ type: "send-failed", nonce: event.nonce })
         );
+      } else if (event.type === "managed-tasks" && connector) {
+        void connector.sendManagedTasks(event.snapshot).then(
+          () => emit2({ type: "sent", nonce: event.nonce }),
+          () => emit2({ type: "send-failed", nonce: event.nonce })
+        );
       } else if (event.type === "interaction" && connector) {
         if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
         void connector.sendInteraction(event.interaction, event.targetMessageId).then(
@@ -9235,6 +9481,9 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
     },
     onAction(action) {
       emit2({ type: "action", ...action });
+    },
+    onTaskRequest(request) {
+      emit2({ type: "managed-task-request", ...request });
     },
     onMessage(request) {
       const feed = createReplyFeed(request.signal);
@@ -9283,7 +9532,7 @@ try {
     else {
       const bridge = createStdioBridge({ signal: controller.signal });
       process.stdin.once("end", () => controller.abort());
-      const connector = createAgentConnector({ transport, store, taskInteractions: true, onMessage: bridge.onMessage, onAction: bridge.onAction, onStatus: (status) => emit({ type: "status", status }) });
+      const connector = createAgentConnector({ transport, store, taskInteractions: true, onMessage: bridge.onMessage, onAction: bridge.onAction, onTaskRequest: bridge.onTaskRequest, onStatus: (status) => emit({ type: "status", status }) });
       bridge.attach(connector);
       emit({ type: "ready", ownerIdentityId: state.session.ownerIdentityId, conversationId: state.session.conversationId });
       try {
