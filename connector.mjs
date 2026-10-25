@@ -1313,11 +1313,11 @@ var require_dijkstra = __commonJS({
         var predecessors = {};
         var costs = {};
         costs[s] = 0;
-        var open = dijkstra.PriorityQueue.make();
-        open.push(s, 0);
+        var open2 = dijkstra.PriorityQueue.make();
+        open2.push(s, 0);
         var closest, u, v, cost_of_s_to_u, adjacent_nodes, cost_of_e, cost_of_s_to_u_plus_cost_of_e, cost_of_s_to_v, first_visit;
-        while (!open.empty()) {
-          closest = open.pop();
+        while (!open2.empty()) {
+          closest = open2.pop();
           u = closest.value;
           cost_of_s_to_u = closest.cost;
           adjacent_nodes = graph[u] || {};
@@ -1329,7 +1329,7 @@ var require_dijkstra = __commonJS({
               first_visit = typeof costs[v] === "undefined";
               if (first_visit || cost_of_s_to_v > cost_of_s_to_u_plus_cost_of_e) {
                 costs[v] = cost_of_s_to_u_plus_cost_of_e;
-                open.push(v, cost_of_s_to_u_plus_cost_of_e);
+                open2.push(v, cost_of_s_to_u_plus_cost_of_e);
                 predecessors[v] = u;
               }
             }
@@ -2339,7 +2339,7 @@ var require_crc = __commonJS({
 var require_parser = __commonJS({
   "apps/mobile/node_modules/pngjs/lib/parser.js"(exports, module) {
     "use strict";
-    var constants = require_constants();
+    var constants2 = require_constants();
     var CrcCalculator = require_crc();
     var Parser = module.exports = function(options, dependencies) {
       this._options = options;
@@ -2350,12 +2350,12 @@ var require_parser = __commonJS({
       this._palette = [];
       this._colorType = 0;
       this._chunks = {};
-      this._chunks[constants.TYPE_IHDR] = this._handleIHDR.bind(this);
-      this._chunks[constants.TYPE_IEND] = this._handleIEND.bind(this);
-      this._chunks[constants.TYPE_IDAT] = this._handleIDAT.bind(this);
-      this._chunks[constants.TYPE_PLTE] = this._handlePLTE.bind(this);
-      this._chunks[constants.TYPE_tRNS] = this._handleTRNS.bind(this);
-      this._chunks[constants.TYPE_gAMA] = this._handleGAMA.bind(this);
+      this._chunks[constants2.TYPE_IHDR] = this._handleIHDR.bind(this);
+      this._chunks[constants2.TYPE_IEND] = this._handleIEND.bind(this);
+      this._chunks[constants2.TYPE_IDAT] = this._handleIDAT.bind(this);
+      this._chunks[constants2.TYPE_PLTE] = this._handlePLTE.bind(this);
+      this._chunks[constants2.TYPE_tRNS] = this._handleTRNS.bind(this);
+      this._chunks[constants2.TYPE_gAMA] = this._handleGAMA.bind(this);
       this.read = dependencies.read;
       this.error = dependencies.error;
       this.metadata = dependencies.metadata;
@@ -2370,10 +2370,10 @@ var require_parser = __commonJS({
       };
     };
     Parser.prototype.start = function() {
-      this.read(constants.PNG_SIGNATURE.length, this._parseSignature.bind(this));
+      this.read(constants2.PNG_SIGNATURE.length, this._parseSignature.bind(this));
     };
     Parser.prototype._parseSignature = function(data) {
-      let signature = constants.PNG_SIGNATURE;
+      let signature = constants2.PNG_SIGNATURE;
       for (let i = 0; i < signature.length; i++) {
         if (data[i] !== signature[i]) {
           this.error(new Error("Invalid file signature"));
@@ -2390,7 +2390,7 @@ var require_parser = __commonJS({
         name += String.fromCharCode(data[i]);
       }
       let ancillary = Boolean(data[4] & 32);
-      if (!this._hasIHDR && type !== constants.TYPE_IHDR) {
+      if (!this._hasIHDR && type !== constants2.TYPE_IHDR) {
         this.error(new Error("Expected IHDR on beggining"));
         return;
       }
@@ -2438,7 +2438,7 @@ var require_parser = __commonJS({
         this.error(new Error("Unsupported bit depth " + depth));
         return;
       }
-      if (!(colorType in constants.COLORTYPE_TO_BPP_MAP)) {
+      if (!(colorType in constants2.COLORTYPE_TO_BPP_MAP)) {
         this.error(new Error("Unsupported color type"));
         return;
       }
@@ -2455,16 +2455,16 @@ var require_parser = __commonJS({
         return;
       }
       this._colorType = colorType;
-      let bpp = constants.COLORTYPE_TO_BPP_MAP[this._colorType];
+      let bpp = constants2.COLORTYPE_TO_BPP_MAP[this._colorType];
       this._hasIHDR = true;
       this.metadata({
         width,
         height,
         depth,
         interlace: Boolean(interlace),
-        palette: Boolean(colorType & constants.COLORTYPE_PALETTE),
-        color: Boolean(colorType & constants.COLORTYPE_COLOR),
-        alpha: Boolean(colorType & constants.COLORTYPE_ALPHA),
+        palette: Boolean(colorType & constants2.COLORTYPE_PALETTE),
+        color: Boolean(colorType & constants2.COLORTYPE_COLOR),
+        alpha: Boolean(colorType & constants2.COLORTYPE_ALPHA),
         bpp,
         colorType
       });
@@ -2488,7 +2488,7 @@ var require_parser = __commonJS({
     };
     Parser.prototype._parseTRNS = function(data) {
       this._crc.write(data);
-      if (this._colorType === constants.COLORTYPE_PALETTE_COLOR) {
+      if (this._colorType === constants2.COLORTYPE_PALETTE_COLOR) {
         if (this._palette.length === 0) {
           this.error(new Error("Transparency chunk must be after palette"));
           return;
@@ -2502,10 +2502,10 @@ var require_parser = __commonJS({
         }
         this.palette(this._palette);
       }
-      if (this._colorType === constants.COLORTYPE_GRAYSCALE) {
+      if (this._colorType === constants2.COLORTYPE_GRAYSCALE) {
         this.transColor([data.readUInt16BE(0)]);
       }
-      if (this._colorType === constants.COLORTYPE_COLOR) {
+      if (this._colorType === constants2.COLORTYPE_COLOR) {
         this.transColor([
           data.readUInt16BE(0),
           data.readUInt16BE(2),
@@ -2519,7 +2519,7 @@ var require_parser = __commonJS({
     };
     Parser.prototype._parseGAMA = function(data) {
       this._crc.write(data);
-      this.gamma(data.readUInt32BE(0) / constants.GAMMA_DIVISION);
+      this.gamma(data.readUInt32BE(0) / constants2.GAMMA_DIVISION);
       this._handleChunkEnd();
     };
     Parser.prototype._handleIDAT = function(length) {
@@ -2531,7 +2531,7 @@ var require_parser = __commonJS({
     };
     Parser.prototype._parseIDAT = function(length, data) {
       this._crc.write(data);
-      if (this._colorType === constants.COLORTYPE_PALETTE_COLOR && this._palette.length === 0) {
+      if (this._colorType === constants2.COLORTYPE_PALETTE_COLOR && this._palette.length === 0) {
         throw new Error("Expected palette not found");
       }
       this.inflateData(data);
@@ -3015,9 +3015,9 @@ var require_parser_async = __commonJS({
 var require_bitpacker = __commonJS({
   "apps/mobile/node_modules/pngjs/lib/bitpacker.js"(exports, module) {
     "use strict";
-    var constants = require_constants();
+    var constants2 = require_constants();
     module.exports = function(dataIn, width, height, options) {
-      let outHasAlpha = [constants.COLORTYPE_COLOR_ALPHA, constants.COLORTYPE_ALPHA].indexOf(
+      let outHasAlpha = [constants2.COLORTYPE_COLOR_ALPHA, constants2.COLORTYPE_ALPHA].indexOf(
         options.colorType
       ) !== -1;
       if (options.colorType === options.inputColorType) {
@@ -3037,11 +3037,11 @@ var require_bitpacker = __commonJS({
       }
       let data = options.bitDepth !== 16 ? dataIn : new Uint16Array(dataIn.buffer);
       let maxValue = 255;
-      let inBpp = constants.COLORTYPE_TO_BPP_MAP[options.inputColorType];
+      let inBpp = constants2.COLORTYPE_TO_BPP_MAP[options.inputColorType];
       if (inBpp === 4 && !options.inputHasAlpha) {
         inBpp = 3;
       }
-      let outBpp = constants.COLORTYPE_TO_BPP_MAP[options.colorType];
+      let outBpp = constants2.COLORTYPE_TO_BPP_MAP[options.colorType];
       if (options.bitDepth === 16) {
         maxValue = 65535;
         outBpp *= 2;
@@ -3065,24 +3065,24 @@ var require_bitpacker = __commonJS({
         let blue;
         let alpha = maxValue;
         switch (options.inputColorType) {
-          case constants.COLORTYPE_COLOR_ALPHA:
+          case constants2.COLORTYPE_COLOR_ALPHA:
             alpha = data[inIndex + 3];
             red = data[inIndex];
             green = data[inIndex + 1];
             blue = data[inIndex + 2];
             break;
-          case constants.COLORTYPE_COLOR:
+          case constants2.COLORTYPE_COLOR:
             red = data[inIndex];
             green = data[inIndex + 1];
             blue = data[inIndex + 2];
             break;
-          case constants.COLORTYPE_ALPHA:
+          case constants2.COLORTYPE_ALPHA:
             alpha = data[inIndex + 1];
             red = data[inIndex];
             green = red;
             blue = red;
             break;
-          case constants.COLORTYPE_GRAYSCALE:
+          case constants2.COLORTYPE_GRAYSCALE:
             red = data[inIndex];
             green = red;
             blue = red;
@@ -3115,8 +3115,8 @@ var require_bitpacker = __commonJS({
         for (let x = 0; x < width; x++) {
           let rgba = getRGBA(data, inIndex);
           switch (options.colorType) {
-            case constants.COLORTYPE_COLOR_ALPHA:
-            case constants.COLORTYPE_COLOR:
+            case constants2.COLORTYPE_COLOR_ALPHA:
+            case constants2.COLORTYPE_COLOR:
               if (options.bitDepth === 8) {
                 outData[outIndex] = rgba.red;
                 outData[outIndex + 1] = rgba.green;
@@ -3133,8 +3133,8 @@ var require_bitpacker = __commonJS({
                 }
               }
               break;
-            case constants.COLORTYPE_ALPHA:
-            case constants.COLORTYPE_GRAYSCALE: {
+            case constants2.COLORTYPE_ALPHA:
+            case constants2.COLORTYPE_GRAYSCALE: {
               let grayscale = (rgba.red + rgba.green + rgba.blue) / 3;
               if (options.bitDepth === 8) {
                 outData[outIndex] = grayscale;
@@ -3307,7 +3307,7 @@ var require_filter_pack = __commonJS({
 var require_packer = __commonJS({
   "apps/mobile/node_modules/pngjs/lib/packer.js"(exports, module) {
     "use strict";
-    var constants = require_constants();
+    var constants2 = require_constants();
     var CrcStream = require_crc();
     var bitPacker = require_bitpacker();
     var filter = require_filter_pack();
@@ -3320,23 +3320,23 @@ var require_packer = __commonJS({
       options.inputHasAlpha = options.inputHasAlpha != null ? options.inputHasAlpha : true;
       options.deflateFactory = options.deflateFactory || zlib.createDeflate;
       options.bitDepth = options.bitDepth || 8;
-      options.colorType = typeof options.colorType === "number" ? options.colorType : constants.COLORTYPE_COLOR_ALPHA;
-      options.inputColorType = typeof options.inputColorType === "number" ? options.inputColorType : constants.COLORTYPE_COLOR_ALPHA;
+      options.colorType = typeof options.colorType === "number" ? options.colorType : constants2.COLORTYPE_COLOR_ALPHA;
+      options.inputColorType = typeof options.inputColorType === "number" ? options.inputColorType : constants2.COLORTYPE_COLOR_ALPHA;
       if ([
-        constants.COLORTYPE_GRAYSCALE,
-        constants.COLORTYPE_COLOR,
-        constants.COLORTYPE_COLOR_ALPHA,
-        constants.COLORTYPE_ALPHA
+        constants2.COLORTYPE_GRAYSCALE,
+        constants2.COLORTYPE_COLOR,
+        constants2.COLORTYPE_COLOR_ALPHA,
+        constants2.COLORTYPE_ALPHA
       ].indexOf(options.colorType) === -1) {
         throw new Error(
           "option color type:" + options.colorType + " is not supported at present"
         );
       }
       if ([
-        constants.COLORTYPE_GRAYSCALE,
-        constants.COLORTYPE_COLOR,
-        constants.COLORTYPE_COLOR_ALPHA,
-        constants.COLORTYPE_ALPHA
+        constants2.COLORTYPE_GRAYSCALE,
+        constants2.COLORTYPE_COLOR,
+        constants2.COLORTYPE_COLOR_ALPHA,
+        constants2.COLORTYPE_ALPHA
       ].indexOf(options.inputColorType) === -1) {
         throw new Error(
           "option input color type:" + options.inputColorType + " is not supported at present"
@@ -3360,7 +3360,7 @@ var require_packer = __commonJS({
     };
     Packer.prototype.filterData = function(data, width, height) {
       let packedData = bitPacker(data, width, height, this._options);
-      let bpp = constants.COLORTYPE_TO_BPP_MAP[this._options.colorType];
+      let bpp = constants2.COLORTYPE_TO_BPP_MAP[this._options.colorType];
       let filteredData = filter(packedData, width, height, this._options, bpp);
       return filteredData;
     };
@@ -3380,8 +3380,8 @@ var require_packer = __commonJS({
     };
     Packer.prototype.packGAMA = function(gamma) {
       let buf = Buffer.alloc(4);
-      buf.writeUInt32BE(Math.floor(gamma * constants.GAMMA_DIVISION), 0);
-      return this._packChunk(constants.TYPE_gAMA, buf);
+      buf.writeUInt32BE(Math.floor(gamma * constants2.GAMMA_DIVISION), 0);
+      return this._packChunk(constants2.TYPE_gAMA, buf);
     };
     Packer.prototype.packIHDR = function(width, height) {
       let buf = Buffer.alloc(13);
@@ -3392,13 +3392,13 @@ var require_packer = __commonJS({
       buf[10] = 0;
       buf[11] = 0;
       buf[12] = 0;
-      return this._packChunk(constants.TYPE_IHDR, buf);
+      return this._packChunk(constants2.TYPE_IHDR, buf);
     };
     Packer.prototype.packIDAT = function(data) {
-      return this._packChunk(constants.TYPE_IDAT, data);
+      return this._packChunk(constants2.TYPE_IDAT, data);
     };
     Packer.prototype.packIEND = function() {
-      return this._packChunk(constants.TYPE_IEND, null);
+      return this._packChunk(constants2.TYPE_IEND, null);
     };
   }
 });
@@ -3409,7 +3409,7 @@ var require_packer_async = __commonJS({
     "use strict";
     var util = __require("util");
     var Stream = __require("stream");
-    var constants = require_constants();
+    var constants2 = require_constants();
     var Packer = require_packer();
     var PackerAsync = module.exports = function(opt) {
       Stream.call(this);
@@ -3420,7 +3420,7 @@ var require_packer_async = __commonJS({
     };
     util.inherits(PackerAsync, Stream);
     PackerAsync.prototype.pack = function(data, width, height, gamma) {
-      this.emit("data", Buffer.from(constants.PNG_SIGNATURE));
+      this.emit("data", Buffer.from(constants2.PNG_SIGNATURE));
       this.emit("data", this._packer.packIHDR(width, height));
       if (gamma) {
         this.emit("data", this._packer.packGAMA(gamma));
@@ -3744,7 +3744,7 @@ var require_packer_sync = __commonJS({
     if (!zlib.deflateSync) {
       hasSyncZlib = false;
     }
-    var constants = require_constants();
+    var constants2 = require_constants();
     var Packer = require_packer();
     module.exports = function(metaData, opt) {
       if (!hasSyncZlib) {
@@ -3755,7 +3755,7 @@ var require_packer_sync = __commonJS({
       let options = opt || {};
       let packer = new Packer(options);
       let chunks = [];
-      chunks.push(Buffer.from(constants.PNG_SIGNATURE));
+      chunks.push(Buffer.from(constants2.PNG_SIGNATURE));
       chunks.push(packer.packIHDR(metaData.width, metaData.height));
       if (metaData.gamma) {
         chunks.push(packer.packGAMA(metaData.gamma));
@@ -4378,7 +4378,7 @@ var require_browser = __commonJS({
     var QRCode2 = require_qrcode();
     var CanvasRenderer = require_canvas();
     var SvgRenderer = require_svg_tag();
-    function renderCanvas(renderFunc, canvas, text3, opts, cb) {
+    function renderCanvas(renderFunc, canvas, text4, opts, cb) {
       const args2 = [].slice.call(arguments, 1);
       const argsNum = args2.length;
       const isLastArgCb = typeof args2[argsNum - 1] === "function";
@@ -4390,8 +4390,8 @@ var require_browser = __commonJS({
           throw new Error("Too few arguments provided");
         }
         if (argsNum === 2) {
-          cb = text3;
-          text3 = canvas;
+          cb = text4;
+          text4 = canvas;
           canvas = opts = void 0;
         } else if (argsNum === 3) {
           if (canvas.getContext && typeof cb === "undefined") {
@@ -4399,8 +4399,8 @@ var require_browser = __commonJS({
             opts = void 0;
           } else {
             cb = opts;
-            opts = text3;
-            text3 = canvas;
+            opts = text4;
+            text4 = canvas;
             canvas = void 0;
           }
         }
@@ -4409,24 +4409,24 @@ var require_browser = __commonJS({
           throw new Error("Too few arguments provided");
         }
         if (argsNum === 1) {
-          text3 = canvas;
+          text4 = canvas;
           canvas = opts = void 0;
         } else if (argsNum === 2 && !canvas.getContext) {
-          opts = text3;
-          text3 = canvas;
+          opts = text4;
+          text4 = canvas;
           canvas = void 0;
         }
-        return new Promise(function(resolve3, reject) {
+        return new Promise(function(resolve4, reject) {
           try {
-            const data = QRCode2.create(text3, opts);
-            resolve3(renderFunc(data, canvas, opts));
+            const data = QRCode2.create(text4, opts);
+            resolve4(renderFunc(data, canvas, opts));
           } catch (e) {
             reject(e);
           }
         });
       }
       try {
-        const data = QRCode2.create(text3, opts);
+        const data = QRCode2.create(text4, opts);
         cb(null, renderFunc(data, canvas, opts));
       } catch (e) {
         cb(e);
@@ -4450,8 +4450,8 @@ var require_server = __commonJS({
     var Utf8Renderer = require_utf8();
     var TerminalRenderer = require_terminal2();
     var SvgRenderer = require_svg();
-    function checkParams(text3, opts, cb) {
-      if (typeof text3 === "undefined") {
+    function checkParams(text4, opts, cb) {
+      if (typeof text4 === "undefined") {
         throw new Error("String required as first argument");
       }
       if (typeof cb === "undefined") {
@@ -4498,13 +4498,13 @@ var require_server = __commonJS({
           return Utf8Renderer;
       }
     }
-    function render(renderFunc, text3, params) {
+    function render(renderFunc, text4, params) {
       if (!params.cb) {
-        return new Promise(function(resolve3, reject) {
+        return new Promise(function(resolve4, reject) {
           try {
-            const data = QRCode2.create(text3, params.opts);
+            const data = QRCode2.create(text4, params.opts);
             return renderFunc(data, params.opts, function(err, data2) {
-              return err ? reject(err) : resolve3(data2);
+              return err ? reject(err) : resolve4(data2);
             });
           } catch (e) {
             reject(e);
@@ -4512,7 +4512,7 @@ var require_server = __commonJS({
         });
       }
       try {
-        const data = QRCode2.create(text3, params.opts);
+        const data = QRCode2.create(text4, params.opts);
         return renderFunc(data, params.opts, params.cb);
       } catch (e) {
         params.cb(e);
@@ -4520,43 +4520,43 @@ var require_server = __commonJS({
     }
     exports.create = QRCode2.create;
     exports.toCanvas = require_browser().toCanvas;
-    exports.toString = function toString(text3, opts, cb) {
-      const params = checkParams(text3, opts, cb);
+    exports.toString = function toString(text4, opts, cb) {
+      const params = checkParams(text4, opts, cb);
       const type = params.opts ? params.opts.type : void 0;
       const renderer = getStringRendererFromType(type);
-      return render(renderer.render, text3, params);
+      return render(renderer.render, text4, params);
     };
-    exports.toDataURL = function toDataURL(text3, opts, cb) {
-      const params = checkParams(text3, opts, cb);
+    exports.toDataURL = function toDataURL(text4, opts, cb) {
+      const params = checkParams(text4, opts, cb);
       const renderer = getRendererFromType(params.opts.type);
-      return render(renderer.renderToDataURL, text3, params);
+      return render(renderer.renderToDataURL, text4, params);
     };
-    exports.toBuffer = function toBuffer(text3, opts, cb) {
-      const params = checkParams(text3, opts, cb);
+    exports.toBuffer = function toBuffer(text4, opts, cb) {
+      const params = checkParams(text4, opts, cb);
       const renderer = getRendererFromType(params.opts.type);
-      return render(renderer.renderToBuffer, text3, params);
+      return render(renderer.renderToBuffer, text4, params);
     };
-    exports.toFile = function toFile(path, text3, opts, cb) {
-      if (typeof path !== "string" || !(typeof text3 === "string" || typeof text3 === "object")) {
+    exports.toFile = function toFile(path, text4, opts, cb) {
+      if (typeof path !== "string" || !(typeof text4 === "string" || typeof text4 === "object")) {
         throw new Error("Invalid argument");
       }
       if (arguments.length < 3 && !canPromise()) {
         throw new Error("Too few arguments provided");
       }
-      const params = checkParams(text3, opts, cb);
+      const params = checkParams(text4, opts, cb);
       const type = params.opts.type || getTypeFromFilename(path);
       const renderer = getRendererFromType(type);
       const renderToFile = renderer.renderToFile.bind(null, path);
-      return render(renderToFile, text3, params);
+      return render(renderToFile, text4, params);
     };
-    exports.toFileStream = function toFileStream(stream, text3, opts) {
+    exports.toFileStream = function toFileStream(stream, text4, opts) {
       if (arguments.length < 2) {
         throw new Error("Too few arguments provided");
       }
-      const params = checkParams(text3, opts, stream.emit.bind(stream, "error"));
+      const params = checkParams(text4, opts, stream.emit.bind(stream, "error"));
       const renderer = getRendererFromType("png");
       const renderToFileStream = renderer.renderToFileStream.bind(null, stream);
-      render(renderToFileStream, text3, params);
+      render(renderToFileStream, text4, params);
     };
   }
 });
@@ -4571,7 +4571,7 @@ var require_lib = __commonJS({
 // integrations/heming-agent/cli.mjs
 var import_qrcode = __toESM(require_lib(), 1);
 import { homedir } from "node:os";
-import { resolve as resolve2 } from "node:path";
+import { dirname as dirname2, resolve as resolve3 } from "node:path";
 
 // integrations/heming-agent/transport.mjs
 import { request as httpsRequest } from "node:https";
@@ -4582,9 +4582,9 @@ function createAgentTransport({ origin = HEMING_ORIGIN, fetchImpl } = {}) {
   const base = new URL(origin);
   if (base.origin !== origin || !["https:", "http:"].includes(base.protocol) || base.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(base.hostname))
     throw Error("AGENT_ORIGIN_NOT_SECURE");
-  const transportFetch = fetchImpl || (base.origin !== HEMING_ORIGIN ? globalThis.fetch : (url, options = {}) => new Promise((resolve3, reject) => {
+  const transportFetch = fetchImpl || (base.origin !== HEMING_ORIGIN ? globalThis.fetch : (url, options = {}) => new Promise((resolve4, reject) => {
     const request = httpsRequest(url, { method: options.method, headers: options.headers, ca, signal: options.signal }, (response) => {
-      resolve3(new Response(Readable.toWeb(response), { status: response.statusCode, headers: response.headers }));
+      resolve4(new Response(Readable.toWeb(response), { status: response.statusCode, headers: response.headers }));
     });
     request.once("error", reject);
     request.end(options.body);
@@ -6695,7 +6695,7 @@ async function ensureAgentPairing({ transport, store, provider, onQr, signal }) 
 }
 
 // integrations/heming-agent/connector.mjs
-import { setTimeout as delay2 } from "node:timers/promises";
+import { setTimeout as delay3 } from "node:timers/promises";
 
 // shared/hemingEmojiCatalog.mjs
 var ROWS = [
@@ -6885,11 +6885,11 @@ var ROWS = [
 var MERGE_IDS = /* @__PURE__ */ new Set([6, 33, 42, 47, 50, 52, 61, 63, 65, 74, 95, 172, 173, 178, 179]);
 var MOVE_IDS = /* @__PURE__ */ new Set([149, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 168, 182]);
 var REMOVE_IDS = /* @__PURE__ */ new Set([28, 29, 108, 135, 141, 150, 151]);
-var HEMING_EMOJIS = Object.freeze(ROWS.map(([id, code, label]) => Object.freeze({
-  id,
+var HEMING_EMOJIS = Object.freeze(ROWS.map(([id2, code, label]) => Object.freeze({
+  id: id2,
   code,
   label,
-  decision: REMOVE_IDS.has(id) ? "removed" : MOVE_IDS.has(id) ? "status-or-seasonal" : MERGE_IDS.has(id) ? "merged" : "active"
+  decision: REMOVE_IDS.has(id2) ? "removed" : MOVE_IDS.has(id2) ? "status-or-seasonal" : MERGE_IDS.has(id2) ? "merged" : "active"
 })));
 var CHAT_EMOJIS = Object.freeze(HEMING_EMOJIS.filter((item) => item.decision === "active"));
 var STATUS_EMOJIS = Object.freeze(HEMING_EMOJIS.filter((item) => item.id === 149 || item.id >= 154 && item.id <= 165));
@@ -6949,9 +6949,9 @@ var CHAT_EMOJI_GROUPS = Object.freeze([
 ]);
 var BY_ID = new Map(HEMING_EMOJIS.map((item) => [item.id, item]));
 var BY_ACTIVE_LABEL = new Map(CHAT_EMOJIS.map((item) => [item.label, item]));
-var hemingEmojiById = (id) => BY_ID.get(Number(id)) || null;
+var hemingEmojiById = (id2) => BY_ID.get(Number(id2)) || null;
 var emojiToken = (item) => `\uFF3B\u548C\u9E23\xB7${String(item.id).padStart(3, "0")}\xB7${item.label}\uFF3D`;
-var DEFAULT_CURATED_RECENT = Object.freeze([10, 14, 2, 3, 1, 35, 110, 111].map((id) => emojiToken(hemingEmojiById(id))));
+var DEFAULT_CURATED_RECENT = Object.freeze([10, 14, 2, 3, 1, 35, 110, 111].map((id2) => emojiToken(hemingEmojiById(id2))));
 function emojiFromToken(value) {
   const match = /^［和鸣·(\d{3})·[^］]{1,24}］$/.exec(String(value || ""));
   return match ? hemingEmojiById(Number(match[1])) : null;
@@ -6992,7 +6992,7 @@ function normalizeIdentityIds(value) {
   if (!Array.isArray(value) || value.length > 200)
     throw new Error("INVALID_IDENTITY_IDS");
   const ids = value.map(Number);
-  if (ids.some((id) => !Number.isInteger(id) || id < 1))
+  if (ids.some((id2) => !Number.isInteger(id2) || id2 < 1))
     throw new Error("INVALID_IDENTITY_IDS");
   return [...new Set(ids)];
 }
@@ -7155,6 +7155,24 @@ function normalizeMessageDestroyData(data) {
   };
 }
 
+// shared/messageEveryoneDeletion.mjs
+function identityId(value) {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^\d+$/.test(value))) return null;
+  const id2 = Number(value);
+  return Number.isSafeInteger(id2) && id2 > 0 ? id2 : null;
+}
+function normalizeEveryoneDeletion(data) {
+  if (data.scope !== "everyone") throw Error("INVALID_MESSAGE_DELETE_SCOPE");
+  const targetSenderIdentityId = identityId(data.targetSenderIdentityId);
+  if (!targetSenderIdentityId) throw Error("INVALID_MESSAGE_DELETE_SENDER");
+  return {
+    targetMessageId: data.targetMessageId,
+    scope: "everyone",
+    targetSenderIdentityId,
+    targetCreatedAt: normalizeIsoTimestamp(data.targetCreatedAt, "MESSAGE_DELETE_TIMESTAMP")
+  };
+}
+
 // shared/chatRecordPayload.mjs
 var CHAT_RECORD_VERSION = 1;
 var MAX_CHAT_RECORD_ITEMS = 30;
@@ -7249,6 +7267,16 @@ function normalizeLibraryDocument(value) {
   if (!value || value.version !== 1 || typeof value.title !== "string" || !value.title.trim() || value.title.length > LIBRARY_TITLE_LIMIT || typeof value.sourceName !== "string" || value.sourceName.length > 64)
     throw Error("INVALID_LIBRARY_DOCUMENT");
   return { version: 1, title: value.title.trim(), sourceName: value.sourceName };
+}
+
+// shared/handoverReference.mjs
+function normalizeHandoverReference(value) {
+  const id2 = (v) => {
+    if (typeof v !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(v)) throw Error("INVALID_HANDOVER_REFERENCE");
+    return v;
+  };
+  if (!value || typeof value.groupName !== "string" || !value.groupName.trim() || value.groupName.length > 128) throw Error("INVALID_HANDOVER_REFERENCE");
+  return { groupId: id2(value.groupId), handoverId: id2(value.handoverId), groupName: value.groupName };
 }
 
 // shared/agentDocumentReferences.mjs
@@ -7562,6 +7590,261 @@ function normalizeAgentManagedTasks(value) {
   return result;
 }
 
+// shared/groupHandoverContext.mjs
+function normalizeHandoverContext(value, topic, { id: id2, text: text4, identities: identities2, documentSnapshot: documentSnapshot2 }, normalizeOutcome) {
+  if (value == null) return void 0;
+  const list = (values, max, normalize) => {
+    if (!Array.isArray(values) || values.length > max) throw Error("HANDOVER_CONTEXT_TOO_LARGE");
+    const result = values.map(normalize);
+    if (new Set(result.map((item) => item.id)).size !== result.length) throw Error("DUPLICATE_HANDOVER_CONTEXT");
+    return result;
+  };
+  if (value.version !== 1) throw Error("INVALID_HANDOVER_CONTEXT");
+  const documents = list(value.documents, 30, documentSnapshot2), outcomes = list(value.outcomes || [], 30, normalizeOutcome);
+  for (const doc of [...documents, ...outcomes]) {
+    if (doc.revisions.length !== 1 || doc.revisions[0].id !== doc.headId) throw Error("INVALID_HANDOVER_CONTEXT_DOCUMENT");
+  }
+  const replies = list(value.replies, 500, (r) => {
+    if (!["reply", "progress", "attachment"].includes(r.kind)) throw Error("INVALID_HANDOVER_CONTEXT_KIND");
+    if (r.documentId && !documents.some((d) => d.id === r.documentId) || r.outcomeId && !outcomes.some((o) => o.id === r.outcomeId)) throw Error("INVALID_HANDOVER_CONTEXT_ATTACHMENT");
+    return {
+      id: id2(r.id),
+      body: text4(r.body, 65536, true),
+      actorId: identities2([r.actorId])[0],
+      actorName: text4(r.actorName || "\u7FA4\u6210\u5458", 128),
+      sentAt: new Date(r.sentAt).toISOString(),
+      kind: r.kind,
+      ...r.replyToId ? { replyToId: id2(r.replyToId) } : {},
+      ...r.documentId ? { documentId: id2(r.documentId) } : {},
+      ...r.outcomeId ? { outcomeId: id2(r.outcomeId) } : {}
+    };
+  });
+  if (documents.some((d) => !(d.source?.kind === "thread" && d.source.id === topic.id) && !replies.some((r) => r.documentId === d.id))) throw Error("INVALID_HANDOVER_CONTEXT_ATTACHMENT");
+  return { version: 1, replies, documents, outcomes };
+}
+
+// shared/groupTeamWork.mjs
+var TEAM_OPERATIONS = ["outcome.save", "outcome.revise", "outcome.adopt", "work.handover", "task.reassign", "task.reschedule", "task.remind"];
+function normalizeTeamData(value, result, { id: id2, text: text4, identities: identities2, documentSnapshot: documentSnapshot2 }) {
+  if (value.outcomeId) result.outcomeId = id2(value.outcomeId);
+  if (value.fromId != null) result.fromId = identities2([value.fromId])[0];
+  if (value.resultDocumentId) result.resultDocumentId = id2(value.resultDocumentId);
+  if (value.operation !== "work.handover") return result;
+  const array = (items, normalize) => {
+    if (!Array.isArray(items) || items.length > 30) throw Error("INVALID_HANDOVER_SELECTION");
+    const normalized = items.map(normalize);
+    if (new Set(normalized.map((v) => v.id)).size !== normalized.length) throw Error("DUPLICATE_HANDOVER_SELECTION");
+    return normalized;
+  };
+  result.backgroundTopicIds = array(value.backgroundTopicIds || [], (value2) => ({ id: id2(value2) })).map((value2) => value2.id);
+  result.taskSnapshots = array(value.taskSnapshots, (t) => ({
+    id: id2(t.id),
+    title: text4(t.title, 240, true),
+    description: text4(t.description || "", 65536),
+    ...t.createdAt ? { createdAt: new Date(t.createdAt).toISOString(), creationEventId: id2(t.creationEventId) } : {},
+    source: { kind: "thread", id: id2(t.source?.id), title: text4(t.source?.title || "", 240) },
+    creatorId: identities2([t.creatorId])[0],
+    assigneeId: identities2([t.assigneeId])[0],
+    headId: id2(t.headId),
+    audience: identities2(t.audience),
+    due: text4(t.due || "", 32),
+    status: ["todo", "doing", "review"].includes(t.status) ? t.status : (() => {
+      throw Error("HANDOVER_TASK_ALREADY_CLOSED");
+    })(),
+    result: text4(t.result || "", 65536),
+    inline: Boolean(t.inline),
+    tag: text4(t.tag || "", 32)
+  }));
+  const normalizeOutcome = (o) => {
+    const doc = documentSnapshot2(o);
+    if (doc.revisions.length !== 1 || doc.revisions[0].id !== doc.headId) throw Error("INVALID_HANDOVER_OUTCOME");
+    return { ...doc, origin: {
+      documentId: id2(o.origin?.documentId),
+      topicId: o.origin?.topicId ? id2(o.origin.topicId) : "",
+      topicTitle: text4(o.origin?.topicTitle || "", 240),
+      versionId: id2(o.origin?.versionId)
+    }, authorId: identities2([o.authorId])[0], purpose: text4(o.purpose || "", 500) };
+  };
+  result.outcomeSnapshots = array(value.outcomeSnapshots, normalizeOutcome);
+  result.topicSnapshots = array(value.topicSnapshots, (t) => ({
+    id: id2(t.id),
+    title: text4(t.title, 240, true),
+    creatorId: identities2([t.creatorId])[0],
+    headId: id2(t.headId),
+    createdAt: new Date(t.createdAt).toISOString(),
+    audience: identities2(t.audience),
+    resolved: t.resolved == null ? false : typeof t.resolved === "boolean" ? t.resolved : (() => {
+      throw Error("INVALID_COLLABORATION_FLAG");
+    })(),
+    body: result.backgroundTopicIds.includes(t.id) ? text4(t.body || "", 65536) : "",
+    ...t.context ? { context: normalizeHandoverContext(t.context, t, { id: id2, text: text4, identities: identities2, documentSnapshot: documentSnapshot2 }, normalizeOutcome) } : {}
+  }));
+  if (value.briefRequired === true) result.briefRequired = true;
+  if (!result.taskSnapshots.length && !result.outcomeSnapshots.length && !result.backgroundTopicIds.length || JSON.stringify(result).length > 18e4) throw Error("INVALID_HANDOVER_SELECTION");
+  return result;
+}
+
+// shared/groupTopicWorkflow.mjs
+var TOPIC_WORKFLOW_OPERATIONS = ["thread.add", "work.offer", "work.accept", "work.return", "work.cancel"];
+var closed = (task) => ["done", "cancelled"].includes(task.status);
+function normalizeTopicWorkflow(value, result, helpers) {
+  if (!TOPIC_WORKFLOW_OPERATIONS.includes(value.operation)) return result;
+  if (["work.offer", "thread.add"].includes(value.operation)) {
+    const statuses = (value.taskSnapshots || []).map((t) => t.status);
+    const normalized = normalizeTeamData({
+      ...value,
+      operation: "work.handover",
+      taskSnapshots: (value.taskSnapshots || []).map((t) => ({ ...t, status: closed(t) ? "doing" : t.status })),
+      outcomeSnapshots: []
+    }, result, helpers);
+    if (value.operation === "work.offer" && statuses.some((s) => ["done", "cancelled"].includes(s))) throw Error("HANDOVER_TASK_ALREADY_CLOSED");
+    normalized.taskSnapshots.forEach((t, i) => {
+      if (!["todo", "doing", "review", "done", "cancelled"].includes(statuses[i])) throw Error("INVALID_COLLABORATION_STATUS");
+      t.status = statuses[i];
+      if (value.taskSnapshots[i].resultDocumentId) t.resultDocumentId = helpers.id(value.taskSnapshots[i].resultDocumentId);
+    });
+    if (value.operation === "thread.add" && (!result.participants?.length || normalized.topicSnapshots.length !== 1 || normalized.topicSnapshots[0].id !== result.id)) throw Error("INVALID_TOPIC_MEMBERSHIP");
+    return normalized;
+  }
+  return result;
+}
+
+// shared/groupCollaboration.mjs
+var OPERATIONS = /* @__PURE__ */ new Set([
+  ...TEAM_OPERATIONS,
+  ...TOPIC_WORKFLOW_OPERATIONS,
+  "thread.create",
+  "thread.reply",
+  "thread.recall",
+  "thread.resolve",
+  "thread.follow",
+  "thread.attachment",
+  "thread.remind",
+  "thread.remove",
+  "document.publish",
+  "document.revise",
+  "document.remove",
+  "document.share",
+  "task.create",
+  "task.start",
+  "task.submit",
+  "task.return",
+  "task.approve",
+  "task.cancel",
+  "task.correct",
+  "task.publish",
+  "task.progress",
+  "task.complete",
+  "announcement.publish",
+  "announcement.confirm",
+  "announcement.remind",
+  "announcement.share"
+]);
+var id = (value) => {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(value)) throw Error("INVALID_COLLABORATION_ID");
+  return value;
+};
+var text3 = (value, max, required = false) => {
+  if (typeof value !== "string" || value.length > max || required && !value.trim()) throw Error("INVALID_COLLABORATION_TEXT");
+  return value.trim();
+};
+function identities(values) {
+  if (!Array.isArray(values) || !values.length || values.length > 1e3) throw Error("INVALID_COLLABORATION_AUDIENCE");
+  const result = [...new Set(values.map(Number))];
+  if (result.some((value) => !Number.isSafeInteger(value) || value < 1)) throw Error("INVALID_COLLABORATION_AUDIENCE");
+  return result.sort((a, b) => a - b);
+}
+function normalizeCollaborationSource(value) {
+  if (value == null) return null;
+  if (!value || !["message", "thread", "task", "document", "outcome", "group", "personal"].includes(value.kind)) throw Error("INVALID_COLLABORATION_SOURCE");
+  return {
+    kind: value.kind,
+    id: id(value.id),
+    title: text3(value.title || "", 240),
+    ...value.kind === "document" ? { versionId: id(value.versionId) } : {}
+  };
+}
+function revision(value) {
+  return {
+    id: id(value.id),
+    title: text3(value.title, 240, true),
+    body: text3(value.body, 65536, true),
+    authorId: identities([value.authorId])[0],
+    sentAt: new Date(value.sentAt).toISOString(),
+    baseId: value.baseId ? id(value.baseId) : "",
+    note: text3(value.note || "", 500)
+  };
+}
+function documentSnapshot(value) {
+  if (!value || !Array.isArray(value.revisions) || !value.revisions.length || value.revisions.length > 100)
+    throw Error("INVALID_COLLABORATION_DOCUMENT");
+  const result = {
+    id: id(value.id),
+    ownerId: identities([value.ownerId])[0],
+    category: text3(value.category || "\u672A\u5206\u7C7B", 64),
+    source: normalizeCollaborationSource(value.source),
+    audience: identities(value.audience),
+    revisions: value.revisions.map(revision),
+    headId: id(value.headId)
+  };
+  if (!result.revisions.some((item) => item.id === result.headId) || new Set(result.revisions.map((item) => item.id)).size !== result.revisions.length)
+    throw Error("INVALID_COLLABORATION_DOCUMENT");
+  if (JSON.stringify(result).length > 2e5) throw Error("COLLABORATION_DOCUMENT_TOO_LARGE");
+  return result;
+}
+function normalizeGroupCollaborationData(value) {
+  if (!value || !OPERATIONS.has(value.operation)) throw Error("INVALID_COLLABORATION_OPERATION");
+  const result = { operation: value.operation, id: id(value.id), audience: identities(value.audience) };
+  if (value.notifyIdentityIds?.length) result.notifyIdentityIds = identities(value.notifyIdentityIds).filter((actor) => result.audience.includes(actor));
+  for (const key of ["baseId", "documentId", "rootMessageId", "replyId", "replyToId"])
+    if (value[key]) result[key] = id(value[key]);
+  for (const [key, max] of [["title", 240], ["body", 65536], ["category", 64], ["note", 500], ["tag", 32]])
+    if (value[key] != null) result[key] = text3(value[key], max);
+  if (value.source) result.source = normalizeCollaborationSource(value.source);
+  if (value.assigneeId != null) result.assigneeId = identities([value.assigneeId])[0];
+  if (value.targetId != null) result.targetId = identities([value.targetId])[0];
+  if (value.status != null) {
+    if (!["todo", "doing", "done"].includes(value.status)) throw Error("INVALID_COLLABORATION_STATUS");
+    result.status = value.status;
+  }
+  if (value.participants?.length) {
+    result.participants = identities(value.participants);
+    if (!result.participants.every((actor) => result.audience.includes(actor))) throw Error("INVALID_COLLABORATION_AUDIENCE");
+  }
+  if (value.due != null) {
+    if (!/^\d{4}-\d{2}-\d{2}(?:T(?:[01]\d|2[0-3]):[0-5]\d)?$/.test(value.due) || !Number.isFinite(Date.parse(value.due.slice(0, 10))) || new Date(value.due.slice(0, 10)).toISOString().slice(0, 10) !== value.due.slice(0, 10)) throw Error("INVALID_COLLABORATION_DUE");
+    result.due = value.due;
+  }
+  for (const key of ["resolved", "required", "following", "labelled", "inline", "scoped"]) if (value[key] != null) {
+    if (typeof value[key] !== "boolean") throw Error("INVALID_COLLABORATION_FLAG");
+    result[key] = value[key];
+  }
+  if (value.snapshot) result.snapshot = documentSnapshot(value.snapshot);
+  if (value.announcement) {
+    const a = value.announcement;
+    if (!Number.isSafeInteger(a.version) || a.version < 1 || typeof a.required !== "boolean") throw Error("INVALID_COLLABORATION_ANNOUNCEMENT");
+    result.announcement = {
+      id: id(a.id),
+      headId: id(a.headId),
+      title: text3(a.title, 240, true),
+      body: text3(a.body, 65536, true),
+      authorId: identities([a.authorId])[0],
+      sentAt: new Date(a.sentAt).toISOString(),
+      audience: identities(a.audience),
+      required: a.required,
+      version: a.version
+    };
+  }
+  const helpers = { id, text: text3, identities, documentSnapshot };
+  return TOPIC_WORKFLOW_OPERATIONS.includes(value.operation) ? normalizeTopicWorkflow(value, result, helpers) : normalizeTeamData(value, result, helpers);
+}
+function collaborationEventNotifies(event) {
+  if (event?.data?.operation === "thread.recall") return false;
+  if (event?.type === "group.collaboration" && event.data?.labelled && event.data.operation !== "thread.remove") return true;
+  if (event?.data?.operation === "thread.remove") return false;
+  return event?.type === "group.collaboration" && !["announcement.confirm", "announcement.share", "thread.resolve", "thread.follow", "document.share"].includes(event.data?.operation);
+}
+
 // shared/groupEvents.mjs
 var GROUP_ROLES = Object.freeze(["owner", "admin", "member"]);
 var GROUP_STATE_ACTIONS = Object.freeze([
@@ -7581,9 +7864,9 @@ function keyVersion(value) {
   return version;
 }
 function boundedText(value, maximum, error) {
-  const text3 = String(value || "").trim();
-  if (text3.length > maximum) throw new Error(error);
-  return text3;
+  const text4 = String(value || "").trim();
+  if (text4.length > maximum) throw new Error(error);
+  return text4;
 }
 function groupAvatar(value) {
   const avatar = String(value || "");
@@ -7670,7 +7953,8 @@ var EVENT_TYPES = /* @__PURE__ */ new Set([
   "group.state",
   "group.sync-request",
   "group.pin",
-  "group.sender-key"
+  "group.sender-key",
+  "group.collaboration"
 ]);
 function eventId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -7725,11 +8009,11 @@ function validateData(type, value) {
       };
       data.text = data.location.label;
     } else if (data.contentType === "contact-card") {
-      const identityId = Number(data.contactCard?.identityId || 0);
-      if (!Number.isInteger(identityId) || identityId < 1)
+      const identityId2 = Number(data.contactCard?.identityId || 0);
+      if (!Number.isInteger(identityId2) || identityId2 < 1)
         throw new Error("INVALID_CONTACT_CARD_IDENTITY");
       data.contactCard = {
-        identityId,
+        identityId: identityId2,
         commId: requiredString(
           String(data.contactCard?.commId || ""),
           "CONTACT_CARD_COMM_ID",
@@ -7821,6 +8105,10 @@ function validateData(type, value) {
         throw Error("INVALID_LIBRARY_DOCUMENT_MESSAGE");
       data.libraryDocument = normalizeLibraryDocument(data.libraryDocument);
     }
+    if (data.handoverReference) {
+      if (data.contentType !== "text" || data.whisper || data.ephemeral || data.agentWork || data.agentDocument || data.agentReply || data.agentInteraction || data.libraryDocument || data.forwardedFrom) throw Error("INVALID_HANDOVER_REFERENCE_MESSAGE");
+      data.handoverReference = normalizeHandoverReference(data.handoverReference);
+    }
     if (data.agentInteraction) {
       if (data.contentType !== "text" || data.forwardedFrom || data.whisper || data.ephemeral || data.agentReply) throw Error("INVALID_AGENT_INTERACTION_MESSAGE");
       data.agentInteraction = normalizeAgentInteraction(data.agentInteraction);
@@ -7883,6 +8171,10 @@ function validateData(type, value) {
       "TARGET_MESSAGE_ID",
       128
     );
+    if (type === "message.delete" && data.scope != null)
+      return normalizeEveryoneDeletion(data);
+    if (type === "message.delete" && data.recallOperationId != null)
+      data.recallOperationId = requiredString(data.recallOperationId, "RECALL_OPERATION_ID", 128);
   } else if (type === "message.reaction") {
     return normalizeReactionData(data);
   } else if (type === "message.ephemeral.start") {
@@ -7932,6 +8224,8 @@ function validateData(type, value) {
     );
     data.targetDeviceId = String(data.targetDeviceId || "").slice(0, 128);
     data.reason = String(data.reason || "ended").slice(0, 32);
+  } else if (type === "group.collaboration") {
+    return normalizeGroupCollaborationData(data);
   } else if (type === "group.profile") {
     return normalizeGroupProfileData(data);
   } else if (type === "group.member-profile") {
@@ -8005,9 +8299,12 @@ function normalizeChatEvent(payload, fallback = {}) {
   throw new Error("INVALID_CHAT_EVENT");
 }
 function chatEventEnvelopeKind(type, data = {}) {
+  if (type === "group.collaboration" && data.operation === "thread.recall") return "control";
+  if (type === "group.collaboration") return collaborationEventNotifies({ type, data }) ? "group-collaboration" : "group-control";
   if (type.startsWith("receipt.")) return "receipt";
   if (type === "typing") return "typing";
   if (type === "message.create") return "message";
+  if (type === "message.delete" && data.scope === "everyone") return "message-delete";
   if (type.startsWith("group.")) return "group-control";
   if (type === "call.offer") return "call-offer";
   if (type === "call.end")
@@ -8067,6 +8364,7 @@ function streamError(code, cause) {
   error.code = code;
   return error;
 }
+var MAX_FRAME_CHARACTERS = 65536;
 async function listenToSse({
   url,
   token: token4,
@@ -8087,6 +8385,7 @@ async function listenToSse({
   let reader;
   try {
     const response = await fetchImpl(url, {
+      redirect: "error",
       headers: { "x-device-token": token4 },
       signal: controller2.signal
     });
@@ -8111,6 +8410,8 @@ async function listenToSse({
       buffer += decoder3.decode(value, { stream: true }).replaceAll("\r\n", "\n");
       const chunks = buffer.split("\n\n");
       buffer = chunks.pop() || "";
+      if (buffer.length > MAX_FRAME_CHARACTERS || chunks.some((chunk) => chunk.length > MAX_FRAME_CHARACTERS))
+        throw streamError("EVENT_STREAM_FRAME_TOO_LARGE");
       for (const chunk of chunks) {
         const data = chunk.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
         if (data) await onEvent(JSON.parse(data));
@@ -8144,11 +8445,11 @@ async function createSignedPrekeys(deviceId, count, sign) {
   const bundles = [];
   const privateKeys = {};
   for (let index = 0; index < count; index += 1) {
-    const id = crypto.randomUUID();
+    const id2 = crypto.randomUUID();
     const pair = await createIdentityKeyPair();
-    const signature = await sign(prekeySigningMessage(deviceId, id, pair.publicKey));
-    bundles.push({ id, publicKey: pair.publicKey, signature });
-    privateKeys[id] = { privateKey: pair.privateKey, publicKey: pair.publicKey, signature, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const signature = await sign(prekeySigningMessage(deviceId, id2, pair.publicKey));
+    bundles.push({ id: id2, publicKey: pair.publicKey, signature });
+    privateKeys[id2] = { privateKey: pair.privateKey, publicKey: pair.publicKey, signature, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
   }
   return { bundles, privateKeys };
 }
@@ -8779,7 +9080,9 @@ function unreadMessageToken(conversationId, actorIdentityId, messageId) {
 }
 function validateUnreadHint(value) {
   if (value === void 0) return void 0;
-  if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== 1 || Object.keys(value).length !== 3 || Object.keys(value).some((key) => !["version", "add", "remove"].includes(key)))
+  const everyone = value?.version === 2 && value.removeScope === "everyone";
+  const keys = everyone ? ["version", "add", "remove", "removeScope"] : ["version", "add", "remove"];
+  if (!value || typeof value !== "object" || Array.isArray(value) || !everyone && value.version !== 1 || Object.keys(value).length !== keys.length || Object.keys(value).some((key) => !keys.includes(key)))
     throw Error("INVALID_UNREAD_HINT");
   for (const tokens of [value.add, value.remove]) {
     if (!Array.isArray(tokens) || tokens.length > MAX_TOKENS || new Set(tokens).size !== tokens.length) throw Error("INVALID_UNREAD_HINT");
@@ -8787,27 +9090,36 @@ function validateUnreadHint(value) {
       if (typeof token4 !== "string" || !HASH_PATTERN.test(token4)) throw Error("INVALID_UNREAD_HINT");
   }
   if (value.add.some((token4) => value.remove.includes(token4))) throw Error("INVALID_UNREAD_HINT");
-  return { version: 1, add: [...value.add], remove: [...value.remove] };
+  return { version: everyone ? 2 : 1, add: [...value.add], remove: [...value.remove], ...everyone ? { removeScope: "everyone" } : {} };
 }
 function unreadHintForPayload(conversationId, actorIdentityId, payload) {
   const batch = payload?.protocol === "clear-signal.chat-event-batch";
   const events = batch ? payload.events : [payload];
   if (!Array.isArray(events) || events.length > MAX_TOKENS) throw Error("INVALID_UNREAD_HINT");
   const add = /* @__PURE__ */ new Set(), remove = /* @__PURE__ */ new Set();
+  let everyone = false;
   for (const event of events) {
-    if (event?.type === "message.create") {
+    if (event?.type === "group.collaboration" && event.data?.operation === "thread.recall") {
+      const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data.replyId);
+      add.delete(token4);
+      remove.add(token4);
+    } else if (collaborationEventNotifies(event)) {
+      add.add(unreadMessageToken(conversationId, actorIdentityId, event.eventId));
+    } else if (event?.type === "message.create") {
       if (event.data?.agentWork?.kind === "task") continue;
       const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data?.messageId);
       remove.delete(token4);
       add.add(token4);
     } else if (event?.type === "message.delete") {
-      const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data?.targetMessageId);
+      const senderId = event.data?.scope === "everyone" ? event.data.targetSenderIdentityId : actorIdentityId;
+      if (event.data?.scope === "everyone") everyone = true;
+      const token4 = unreadMessageToken(conversationId, senderId, event.data?.targetMessageId);
       add.delete(token4);
       remove.add(token4);
     }
   }
-  if (!batch && !add.size && !remove.size && payload?.data?.agentWork?.kind !== "task" && payload?.type !== "agent.tasks") return void 0;
-  return validateUnreadHint({ version: 1, add: [...add], remove: [...remove] });
+  if (!batch && !add.size && !remove.size && payload?.data?.agentWork?.kind !== "task" && payload?.type !== "agent.tasks" && payload?.type !== "group.collaboration") return void 0;
+  return validateUnreadHint({ version: everyone ? 2 : 1, add: [...add], remove: [...remove], ...everyone ? { removeScope: "everyone" } : {} });
 }
 
 // integrations/heming-agent/secureChannel.mjs
@@ -8821,7 +9133,7 @@ function createSecureAgentChannel({ transport, state, persist }) {
   async function ensurePrekeys() {
     const records = state.prekeys || {};
     if (Object.keys(records).length) {
-      const synced = await request("/api/v1/devices/current/prekeys", { body: { prekeys: Object.entries(records).map(([id, record]) => ({ id, publicKey: record.publicKey, signature: record.signature })), cryptoVersion: 3 } });
+      const synced = await request("/api/v1/devices/current/prekeys", { body: { prekeys: Object.entries(records).map(([id2, record]) => ({ id: id2, publicKey: record.publicKey, signature: record.signature })), cryptoVersion: 3 } });
       if (synced.available >= 12) return;
     }
     const generated = await createSignedPrekeys(session.deviceId, 24, sign);
@@ -8968,24 +9280,24 @@ function createSecureAgentChannel({ transport, state, persist }) {
 }
 
 // integrations/heming-agent/replyDelivery.mjs
-function splitAgentReply(text3, limit = 16384) {
+function splitAgentReply(text4, limit = 16384) {
   const chunks = [];
-  for (let offset = 0; offset < text3.length; ) {
-    let end = Math.min(offset + limit, text3.length);
-    if (end < text3.length && /[\uD800-\uDBFF]/.test(text3[end - 1])) end--;
-    chunks.push(text3.slice(offset, end));
+  for (let offset = 0; offset < text4.length; ) {
+    let end = Math.min(offset + limit, text4.length);
+    if (end < text4.length && /[\uD800-\uDBFF]/.test(text4[end - 1])) end--;
+    chunks.push(text4.slice(offset, end));
     offset = end;
   }
   return chunks.length ? chunks : [""];
 }
 function createReplyDelivery({ channel, state, persist, beforeClear = async () => {
 } }) {
-  async function update(job2, text3, status) {
+  async function update(job2, text4, status) {
     if (!job2.created) {
       await channel.send(createChatEvent("message.create", {
         messageId: job2.replyId,
         contentType: "text",
-        text: text3,
+        text: text4,
         agentReply: { requestMessageId: job2.requestMessageId, revision: job2.revision, state: status }
       }, { eventId: job2.replyId }));
       job2.created = true;
@@ -8993,7 +9305,7 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
       return;
     }
     job2.revision++;
-    job2.text = splitAgentReply(text3)[0];
+    job2.text = splitAgentReply(text4)[0];
     persist();
     await channel.send(createChatEvent("agent.reply", {
       targetMessageId: job2.replyId,
@@ -9001,15 +9313,21 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
       agentReply: { requestMessageId: job2.requestMessageId, revision: job2.revision, state: status }
     }));
   }
-  function prepare(job2, text3, status) {
+  function prepare(job2, text4, status) {
     job2.finalStatus = status;
-    job2.parts = splitAgentReply(text3).map((text4) => ({ id: crypto.randomUUID(), text: text4 }));
+    job2.parts = splitAgentReply(text4).map((text5) => ({ id: crypto.randomUUID(), text: text5 }));
     job2.deliveredParts = 0;
     persist();
   }
   async function finish(job2) {
     await channel.flushOutbox();
     if (!job2.finalStatus) prepare(job2, "\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u81EA\u52A8\u91CD\u8DD1\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002", "failed");
+    if (job2.finalStatus === "completed" && job2.fileMessageIds?.length && job2.parts.every((part) => !part.text.trim())) {
+      await beforeClear(job2);
+      state.job = null;
+      persist();
+      return;
+    }
     if (!job2.deliveredParts) {
       await update(job2, job2.parts[0].text, job2.finalStatus);
       job2.deliveredParts = 1;
@@ -9036,14 +9354,14 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
 // integrations/heming-agent/abortable.mjs
 function abortable(value, signal) {
   if (!signal) return Promise.resolve(value);
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const abort = () => reject(signal.reason || Error("AGENT_ABORTED"));
     if (signal.aborted) {
       abort();
       return;
     }
     signal.addEventListener("abort", abort, { once: true });
-    Promise.resolve(value).then(resolve3, reject).finally(() => signal.removeEventListener("abort", abort));
+    Promise.resolve(value).then(resolve4, reject).finally(() => signal.removeEventListener("abort", abort));
   });
 }
 
@@ -9053,7 +9371,7 @@ function createInteractionDelivery({ channel, state, persist }) {
   async function send(value, targetMessageId) {
     const interaction = normalizeAgentInteraction(value);
     if (interaction.ownerIdentityId !== String(state.session.ownerIdentityId)) throw Error("AGENT_RECIPIENT_MISMATCH");
-    const text3 = `\u9700\u8981\u4F60\u7684\u6279\u51C6
+    const text4 = `\u9700\u8981\u4F60\u7684\u6279\u51C6
 ${interaction.command}
 ${interaction.reason}
 ${approvalStatusLabel(interaction.status)}`;
@@ -9061,20 +9379,20 @@ ${approvalStatusLabel(interaction.status)}`;
       if (interaction.requestMessageId !== state.job?.requestMessageId || interaction.status !== "pending" || interaction.revision !== 0)
         throw Error("AGENT_APPROVAL_TASK_MISMATCH");
       if (state.interactions[interaction.id]) throw Error("AGENT_APPROVAL_ALREADY_SENT");
-      const id = crypto.randomUUID();
-      const message = { id, senderIdentityId: state.session.identity.identityId, text: text3, agentInteraction: interaction };
+      const id2 = crypto.randomUUID();
+      const message = { id: id2, senderIdentityId: state.session.identity.identityId, text: text4, agentInteraction: interaction };
       state.interactions[interaction.id] = message;
       for (const [key, item] of Object.entries(state.interactions)) {
         if (Object.keys(state.interactions).length <= 128) break;
         if (item.agentInteraction.status !== "pending") delete state.interactions[key];
       }
       persist();
-      await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text: text3, agentInteraction: interaction }, { eventId: id }));
-      return id;
+      await channel.send(createChatEvent("message.create", { messageId: id2, contentType: "text", text: text4, agentInteraction: interaction }, { eventId: id2 }));
+      return id2;
     }
     const previous = state.interactions[interaction.id];
     if (!previous || previous.id !== targetMessageId) throw Error("AGENT_APPROVAL_NOT_FOUND");
-    const event = createChatEvent("message.edit", { targetMessageId, text: text3, agentInteraction: interaction });
+    const event = createChatEvent("message.edit", { targetMessageId, text: text4, agentInteraction: interaction });
     const next = mergeAgentInteraction(previous, event, state.session.identity.identityId);
     if (next === previous) throw Error("AGENT_APPROVAL_STATE_CONFLICT");
     await channel.send(event);
@@ -9194,11 +9512,496 @@ function createManagedTaskDelivery({ state, persist, channel, onRequest }) {
   };
 }
 
+// integrations/heming-agent/fileDelivery.mjs
+import { constants } from "node:fs";
+import { open, realpath } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { basename, isAbsolute, resolve as resolve2, sep } from "node:path";
+
+// shared/attachmentCrypto.mjs
+var encoder5 = new TextEncoder();
+var MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+var DEFAULT_ATTACHMENT_CHUNK_BYTES = 1024 * 1024;
+function toBase646(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
+  return btoa(binary);
+}
+function fromBase646(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+async function sha256Hex(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function chunkNonce(prefix, index) {
+  const nonce = new Uint8Array(12);
+  nonce.set(prefix, 0);
+  new DataView(nonce.buffer).setUint32(8, index, false);
+  return nonce;
+}
+function chunkAad(metadata, index, plainBytes) {
+  return encoder5.encode(
+    JSON.stringify({
+      algorithm: metadata.algorithm,
+      index,
+      plainBytes,
+      version: metadata.version
+    })
+  );
+}
+async function createAttachmentChunkEncryption(plainBytes, chunkBytes = DEFAULT_ATTACHMENT_CHUNK_BYTES) {
+  if (!Number.isInteger(plainBytes) || plainBytes < 1)
+    throw new Error("ATTACHMENT_EMPTY");
+  if (plainBytes > MAX_ATTACHMENT_BYTES)
+    throw new Error("ATTACHMENT_TOO_LARGE");
+  if (!Number.isInteger(chunkBytes) || chunkBytes < 256 * 1024 || chunkBytes > 4 * 1024 * 1024)
+    throw new Error("ATTACHMENT_CHUNK_SIZE_INVALID");
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+  const rawKey = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  return {
+    version: 2,
+    algorithm: "AES-256-GCM-CHUNKED",
+    key: toBase646(rawKey),
+    noncePrefix: toBase646(crypto.getRandomValues(new Uint8Array(8))),
+    plainBytes,
+    chunkBytes,
+    chunkCount: Math.ceil(plainBytes / chunkBytes)
+  };
+}
+async function encryptAttachmentChunk(metadata, index, value) {
+  if (metadata?.version !== 2 || metadata.algorithm !== "AES-256-GCM-CHUNKED" || !Number.isInteger(index) || index < 0 || index >= metadata.chunkCount)
+    throw new Error("INVALID_ATTACHMENT_CHUNK_METADATA");
+  const plain = value instanceof Uint8Array ? value : new Uint8Array(value);
+  const expected = index === metadata.chunkCount - 1 ? metadata.plainBytes - index * metadata.chunkBytes : metadata.chunkBytes;
+  if (plain.byteLength !== expected)
+    throw new Error("ATTACHMENT_CHUNK_SIZE_MISMATCH");
+  const rawKey = fromBase646(metadata.key);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"]
+  );
+  const nonce = chunkNonce(fromBase646(metadata.noncePrefix), index);
+  const cipherBytes = new Uint8Array(
+    await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: nonce,
+        additionalData: chunkAad(metadata, index, plain.byteLength),
+        tagLength: 128
+      },
+      key,
+      plain
+    )
+  );
+  rawKey.fill(0);
+  return {
+    cipherBytes,
+    descriptor: {
+      index,
+      plainBytes: plain.byteLength,
+      cipherBytes: cipherBytes.byteLength,
+      digest: await sha256Hex(cipherBytes)
+    }
+  };
+}
+async function completeAttachmentChunkMetadata(metadata, chunks) {
+  if (metadata?.version !== 2 || !Array.isArray(chunks) || chunks.length !== metadata.chunkCount)
+    throw new Error("ATTACHMENT_CHUNKS_INCOMPLETE");
+  const normalized = [...chunks].sort((left, right) => left.index - right.index);
+  for (let index = 0; index < normalized.length; index += 1) {
+    const chunk = normalized[index];
+    if (chunk.index !== index || !Number.isInteger(chunk.plainBytes) || !Number.isInteger(chunk.cipherBytes) || !/^[a-f0-9]{64}$/.test(chunk.digest))
+      throw new Error("ATTACHMENT_CHUNKS_INCOMPLETE");
+  }
+  const digest = await sha256Hex(
+    encoder5.encode(normalized.map((chunk) => chunk.digest).join("\n"))
+  );
+  return {
+    ...metadata,
+    cipherBytes: normalized.reduce((sum, chunk) => sum + chunk.cipherBytes, 0),
+    digest,
+    chunks: normalized
+  };
+}
+
+// shared/attachmentMultipartTransport.mjs
+function abortError() {
+  const error = new Error("ATTACHMENT_UPLOAD_ABORTED");
+  error.name = "AbortError";
+  return error;
+}
+function delay2(milliseconds, signal) {
+  return new Promise((resolve4, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const timer = setTimeout(resolve4, milliseconds);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(abortError());
+      },
+      { once: true }
+    );
+  });
+}
+async function jsonRequest(fetchImpl, url, token4, options = {}) {
+  const response = await fetchImpl(url, {
+    redirect: "error",
+    method: options.method || "GET",
+    signal: options.signal,
+    headers: {
+      "x-device-token": token4,
+      ...options.body ? { "content-type": "application/json" } : {},
+      ...options.headers || {}
+    },
+    body: options.body ? JSON.stringify(options.body) : void 0
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error || `BACKEND_${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+async function putPartWithRetry({
+  fetchImpl,
+  url,
+  token: token4,
+  digest,
+  bytes,
+  signal
+}) {
+  let lastError;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (signal?.aborted) throw abortError();
+    try {
+      const response = await fetchImpl(url, {
+        redirect: "error",
+        method: "PUT",
+        signal,
+        headers: {
+          "x-device-token": token4,
+          "content-type": "application/octet-stream",
+          "x-attachment-part-digest": digest
+        },
+        body: bytes
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(payload.error || `BACKEND_${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      if (error?.name === "AbortError" || error?.status === 409) throw error;
+      lastError = error;
+      if (attempt < 3) await delay2(250 * 3 ** attempt, signal);
+    }
+  }
+  throw lastError || new Error("ATTACHMENT_UPLOAD_NETWORK");
+}
+async function resolveUpload({
+  fetchImpl,
+  baseUrl,
+  token: token4,
+  conversationId,
+  file,
+  resume,
+  signal
+}) {
+  if (resume?.uploadId && resume?.encryption) {
+    if (resume.encryption.version !== 2 || resume.encryption.plainBytes !== file.size)
+      throw new Error("ATTACHMENT_RESUME_FILE_MISMATCH");
+    try {
+      const status = await jsonRequest(
+        fetchImpl,
+        `${baseUrl}/api/v1/attachments/${resume.uploadId}/upload`,
+        token4,
+        { signal }
+      );
+      return {
+        uploadId: resume.uploadId,
+        encryption: resume.encryption,
+        uploaded: new Map(status.parts.map((part) => [part.index, part]))
+      };
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+  }
+  const encryption = await createAttachmentChunkEncryption(file.size);
+  const initiated = await jsonRequest(
+    fetchImpl,
+    `${baseUrl}/api/v1/conversations/${conversationId}/attachments/multipart`,
+    token4,
+    {
+      method: "POST",
+      signal,
+      body: {
+        plainBytes: encryption.plainBytes,
+        cipherBytes: encryption.plainBytes + encryption.chunkCount * 16,
+        chunkCount: encryption.chunkCount,
+        chunkBytes: encryption.chunkBytes
+      }
+    }
+  );
+  return { uploadId: initiated.id, encryption, uploaded: /* @__PURE__ */ new Map() };
+}
+async function uploadEncryptedAttachmentMultipart({
+  baseUrl,
+  token: token4,
+  conversationId,
+  file,
+  signal,
+  resume,
+  onCheckpoint,
+  onProgress,
+  fetchImpl = globalThis.fetch,
+  concurrency = 2
+}) {
+  if (!file?.slice || !Number.isInteger(file.size) || file.size < 1)
+    throw new Error("ATTACHMENT_FILE_REQUIRED");
+  const upload = await resolveUpload({
+    fetchImpl,
+    baseUrl,
+    token: token4,
+    conversationId,
+    file,
+    resume,
+    signal
+  });
+  await onCheckpoint?.({
+    uploadId: upload.uploadId,
+    encryption: upload.encryption
+  });
+  const descriptors = new Array(upload.encryption.chunkCount);
+  let uploadedBytes = 0;
+  const pending = Array.from(
+    { length: upload.encryption.chunkCount },
+    (_, index) => index
+  );
+  async function worker() {
+    while (pending.length) {
+      if (signal?.aborted) throw abortError();
+      const index = pending.shift();
+      const start = index * upload.encryption.chunkBytes;
+      const plain = new Uint8Array(
+        await file.slice(start, Math.min(file.size, start + upload.encryption.chunkBytes)).arrayBuffer()
+      );
+      const encrypted = await encryptAttachmentChunk(
+        upload.encryption,
+        index,
+        plain
+      );
+      plain.fill(0);
+      descriptors[index] = encrypted.descriptor;
+      const remote = upload.uploaded.get(index);
+      if (!remote || remote.digest !== encrypted.descriptor.digest || remote.cipherBytes !== encrypted.descriptor.cipherBytes)
+        await putPartWithRetry({
+          fetchImpl,
+          url: `${baseUrl}/api/v1/attachments/${upload.uploadId}/parts/${index}`,
+          token: token4,
+          digest: encrypted.descriptor.digest,
+          bytes: encrypted.cipherBytes,
+          signal
+        });
+      uploadedBytes += encrypted.descriptor.cipherBytes;
+      onProgress?.({
+        loaded: uploadedBytes,
+        total: upload.encryption.plainBytes + upload.encryption.chunkCount * 16
+      });
+    }
+  }
+  await Promise.all(
+    Array.from(
+      { length: Math.max(1, Math.min(4, concurrency)) },
+      () => worker()
+    )
+  );
+  const metadata = await completeAttachmentChunkMetadata(
+    upload.encryption,
+    descriptors
+  );
+  await jsonRequest(
+    fetchImpl,
+    `${baseUrl}/api/v1/attachments/${upload.uploadId}/complete`,
+    token4,
+    {
+      method: "POST",
+      signal,
+      body: { digest: metadata.digest, chunks: metadata.chunks }
+    }
+  );
+  return { id: upload.uploadId, metadata };
+}
+
+// integrations/heming-agent/fileDelivery.mjs
+var fail3 = (code) => {
+  throw Error(code);
+};
+var inside = (path, root) => path === root || path.startsWith(root + sep);
+async function readArtifact(path, protectedPaths) {
+  if (typeof path !== "string" || path.length > 4096 || !isAbsolute(path) || path.includes("\0")) fail3("AGENT_FILE_PATH_INVALID");
+  const canonical = await realpath(path);
+  const absolute = resolve2(path);
+  const osAlias = process.platform === "darwin" ? absolute.replace(/^\/(tmp|var)(?=\/|$)/, "/private/$1") : absolute;
+  if (canonical !== absolute && canonical !== osAlias) fail3("AGENT_FILE_SYMLINK_REJECTED");
+  if (canonical.split(sep).some((part) => [".ssh", ".aws", ".gnupg", ".git", ".config"].includes(part)) || basename(canonical).startsWith(".") || ["/proc", "/sys", "/dev", "/etc", "/private/etc"].some((root) => inside(canonical, root))) fail3("AGENT_FILE_PATH_DENIED");
+  for (const root of protectedPaths) {
+    const protectedRoot = await realpath(root).catch(() => resolve2(root));
+    if (inside(canonical, protectedRoot)) fail3("AGENT_FILE_PATH_DENIED");
+  }
+  if (/(?:^|[._-])(?:identity|credentials?|secrets?|tokens?|passwords?|private[-_]?keys?)(?:[._-]|$)/i.test(basename(canonical))) fail3("AGENT_FILE_PATH_DENIED");
+  const handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const before = await handle.stat();
+    if (!before.isFile() || before.nlink !== 1) fail3("AGENT_FILE_REGULAR_REQUIRED");
+    if (!before.size || before.size > MAX_ATTACHMENT_BYTES) fail3(before.size ? "ATTACHMENT_TOO_LARGE" : "ATTACHMENT_EMPTY");
+    const bytes = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (!read.bytesRead) fail3("AGENT_FILE_CHANGED");
+      offset += read.bytesRead;
+    }
+    const after = await handle.stat();
+    if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) fail3("AGENT_FILE_CHANGED");
+    return { bytes, mimeType: "application/octet-stream", digest: createHash("sha256").update(bytes).digest("hex") };
+  } finally {
+    await handle.close();
+  }
+}
+function displayName(value, path) {
+  const name = basename(String(value || basename(path)).replaceAll("\\", "/")).replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, "").trim();
+  if (!name || name === "." || name === ".." || name.length > 200) fail3("AGENT_FILE_NAME_INVALID");
+  return name;
+}
+function createFileDelivery({ channel, transport, state, persist, protectedPaths = [] }) {
+  state.fileDeliveries ||= {};
+  let tail = Promise.resolve();
+  const serial = (fn) => {
+    const result = tail.then(fn);
+    tail = result.catch(() => {
+    });
+    return result;
+  };
+  async function deliver(entry, signal, prepared) {
+    if (entry.delivered) return entry.messageId;
+    if (!entry.attachment) {
+      const artifact = prepared || await readArtifact(entry.path, protectedPaths);
+      if (entry.sourceDigest && entry.sourceDigest !== artifact.digest) fail3("AGENT_FILE_CHANGED");
+      entry.sourceDigest = artifact.digest;
+      persist();
+      const file = new File([artifact.bytes], entry.fileName, { type: artifact.mimeType });
+      artifact.bytes.fill(0);
+      const stored = await uploadEncryptedAttachmentMultipart({
+        baseUrl: transport.origin,
+        token: state.session.token,
+        conversationId: state.session.conversationId,
+        file,
+        signal,
+        fetchImpl: transport.fetchImpl,
+        resume: entry.resume,
+        onCheckpoint: (checkpoint) => {
+          entry.resume = checkpoint;
+          persist();
+        }
+      });
+      entry.attachment = { id: stored.id, ...stored.metadata, fileName: file.name, mimeType: file.type, durationMs: 0 };
+      delete entry.resume;
+      persist();
+    }
+    await channel.request(`/api/v1/attachments/${entry.attachment.id}/commit`, {
+      body: { conversationId: state.session.conversationId },
+      signal
+    });
+    entry.event ||= createChatEvent("message.create", {
+      messageId: entry.messageId,
+      contentType: "file",
+      text: entry.caption,
+      attachments: [entry.attachment],
+      ...entry.requestId ? { agentReply: { requestMessageId: entry.requestId, revision: 0, state: "completed" } } : {}
+    }, { eventId: entry.messageId });
+    persist();
+    await channel.send(entry.event);
+    entry.delivered = true;
+    if (state.job?.requestMessageId === entry.requestId) {
+      state.job.fileMessageIds = [.../* @__PURE__ */ new Set([...state.job.fileMessageIds || [], entry.messageId])];
+    }
+    delete entry.path;
+    delete entry.attachment;
+    delete entry.event;
+    delete entry.sourceDigest;
+    persist();
+    return entry.messageId;
+  }
+  return {
+    send: (input, signal) => serial(async () => {
+      if (input.conversationId !== state.session.conversationId) fail3("AGENT_RECIPIENT_MISMATCH");
+      if (typeof input.deliveryId !== "string" || !/^[a-zA-Z0-9_-]{16,128}$/.test(input.deliveryId)) fail3("AGENT_FILE_DELIVERY_ID_INVALID");
+      if (input.requestId && state.job?.requestMessageId !== input.requestId) fail3("AGENT_TASK_CLOSED");
+      const inputDigest = createHash("sha256").update(JSON.stringify([input.filePath, input.fileName || "", input.caption || "", input.requestId || ""])).digest("hex");
+      let entry = state.fileDeliveries[input.deliveryId];
+      let prepared;
+      if (!entry) {
+        const pending = Object.values(state.fileDeliveries).filter((item) => !item.delivered && !item.recoveryFailed);
+        if (pending.length >= 16) fail3("AGENT_FILE_QUEUE_FULL");
+        const artifact = prepared = await readArtifact(input.filePath, protectedPaths);
+        entry = {
+          inputDigest,
+          path: input.filePath,
+          fileName: displayName(input.fileName, input.filePath),
+          sourceDigest: artifact.digest,
+          messageId: crypto.randomUUID(),
+          requestId: input.requestId || "",
+          caption: String(input.caption || "").slice(0, 16384)
+        };
+        state.fileDeliveries[input.deliveryId] = entry;
+        const completed = Object.keys(state.fileDeliveries).filter((key) => state.fileDeliveries[key].delivered || state.fileDeliveries[key].recoveryFailed);
+        for (const key of completed.slice(0, Math.max(0, completed.length - 128))) delete state.fileDeliveries[key];
+        persist();
+      }
+      if (entry.inputDigest !== inputDigest) fail3("AGENT_FILE_DELIVERY_MISMATCH");
+      try {
+        return await deliver(entry, signal, prepared);
+      } catch (error) {
+        if (signal?.aborted) {
+          entry.recoveryFailed = true;
+          persist();
+        }
+        throw error;
+      }
+    }),
+    flush: (signal) => serial(async () => {
+      for (const entry of Object.values(state.fileDeliveries)) {
+        if (entry.delivered || entry.recoveryFailed) continue;
+        try {
+          await deliver(entry, signal);
+        } catch (error) {
+          if (error.status === 401 || error.status === 403 || signal?.aborted) throw error;
+          entry.recoveryFailed = true;
+          persist();
+        }
+      }
+    })
+  };
+}
+
 // integrations/heming-agent/connector.mjs
 function createAgentConnector({ transport, store, onMessage, onAction = () => {
 }, onTaskRequest = () => {
 }, onStatus = () => {
-}, taskTimeoutMs = 6e5, taskInteractions = false }) {
+}, taskTimeoutMs = 6e5, taskInteractions = false, protectedPaths = [] }) {
   const state = store.read();
   if (!state?.session?.token) throw Error("AGENT_PAIRING_REQUIRED");
   state.inbox ||= [];
@@ -9209,6 +10012,8 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
   const delivery = createReplyDelivery({ channel, state, persist, beforeClear: work.finish });
   const interactions = createInteractionDelivery({ channel, state, persist });
   const managedTasks = createManagedTaskDelivery({ channel, state, persist, onRequest: onTaskRequest });
+  const files = createFileDelivery({ channel, transport, state, persist, protectedPaths });
+  let taskSignal;
   let activeSync = null;
   let activeDrain = null;
   let started = false;
@@ -9218,7 +10023,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     state.job = job2;
     persist();
     const deadline = AbortSignal.timeout(taskTimeoutMs);
-    const taskSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+    taskSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
     try {
       if (taskInteractions) await work.begin(job2);
       if (event.data.whisper || event.data.ephemeral) throw Error("AGENT_EPHEMERAL_UNSUPPORTED");
@@ -9234,21 +10039,21 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         updateTask: (update) => work.update(job2.requestMessageId, update),
         sendQuestion: (card, target) => work.question(job2.requestMessageId, card, target)
       }), taskSignal);
-      let text3 = "";
+      let text4 = "";
       if (result?.[Symbol.asyncIterator]) {
         const iterator = result[Symbol.asyncIterator]();
         while (true) {
           const next = await abortable(iterator.next(), taskSignal);
           if (next.done) break;
           const delta = next.value;
-          text3 = delta?.mode === "snapshot" ? String(delta.text || "") : text3 + String(delta || "");
-          if (text3.length > 131072) throw Error("AGENT_REPLY_LIMIT");
+          text4 = delta?.mode === "snapshot" ? String(delta.text || "") : text4 + String(delta || "");
+          if (text4.length > 131072) throw Error("AGENT_REPLY_LIMIT");
         }
-      } else text3 = String(result?.text ?? result ?? "");
+      } else text4 = String(result?.text ?? result ?? "");
       taskSignal.throwIfAborted();
-      if (!text3.trim()) throw Error("AGENT_EMPTY_REPLY");
-      if (text3.length > 131072) throw Error("AGENT_REPLY_LIMIT");
-      delivery.prepare(job2, text3, "completed");
+      if (!text4.trim() && !job2.fileMessageIds?.length) throw Error("AGENT_EMPTY_REPLY");
+      if (text4.length > 131072) throw Error("AGENT_REPLY_LIMIT");
+      delivery.prepare(job2, text4, "completed");
     } catch (error) {
       const stopped = error.message === "AGENT_TASK_STOPPED";
       const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u652F\u6301\u6587\u5B57\u548C Markdown\uFF0C\u6682\u4E0D\u652F\u6301\u5904\u7406\u9644\u4EF6\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
@@ -9256,6 +10061,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       onStatus("task-failed");
     }
     await delivery.finish(job2);
+    taskSignal = null;
   }
   async function sync(signal) {
     if (!activeSync) activeSync = (async () => {
@@ -9301,6 +10107,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     });
     await activeSync;
     await managedTasks.flush();
+    if (!activeDrain) await files.flush(signal);
     if (!activeDrain) activeDrain = (async () => {
       if (state.job) await delivery.finish(state.job);
       while (state.inbox.length && !signal?.aborted) {
@@ -9324,6 +10131,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     try {
       await channel.ensurePrekeys();
       await channel.flushOutbox();
+      await files.flush(signal);
       if (state.job) await delivery.finish(state.job);
       timer = setInterval(() => {
         void sync(signal).catch(() => onStatus("reconnecting"));
@@ -9348,7 +10156,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         } catch (error) {
           if ([401, 403].includes(error.status) || error.message === "AGENT_REVOKED") throw error;
           onStatus("reconnecting");
-          await delay2(Math.min(3e4, 1e3 * 2 ** Math.min(attempt++, 5)), void 0, { signal }).catch(() => {
+          await delay3(Math.min(3e4, 1e3 * 2 ** Math.min(attempt++, 5)), void 0, { signal }).catch(() => {
           });
         }
       }
@@ -9362,12 +10170,13 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       started = false;
     }
   }
-  async function sendText(text3) {
-    const id = crypto.randomUUID();
-    await channel.send(createChatEvent("message.create", { messageId: id, contentType: "text", text: text3 }, { eventId: id }));
-    return id;
+  async function sendText(text4) {
+    const id2 = crypto.randomUUID();
+    await channel.send(createChatEvent("message.create", { messageId: id2, contentType: "text", text: text4 }, { eventId: id2 }));
+    return id2;
   }
-  return { start, sync, sendText, sendManagedTasks: managedTasks.publish, sendInteraction: interactions.send, session: state.session };
+  const sendFile = (input) => files.send(input, input.requestId && taskSignal ? AbortSignal.any([taskSignal, AbortSignal.timeout(3e5)]) : AbortSignal.timeout(3e5));
+  return { start, sync, sendText, sendFile, sendManagedTasks: managedTasks.publish, sendInteraction: interactions.send, session: state.session };
 }
 
 // integrations/heming-agent/stdioBridge.mjs
@@ -9393,9 +10202,9 @@ function createReplyFeed(signal) {
     notify();
   };
   return {
-    snapshot(text3) {
+    snapshot(text4) {
       if (!done) {
-        pending = { mode: "snapshot", text: text3 };
+        pending = { mode: "snapshot", text: text4 };
         notify();
       }
     },
@@ -9416,8 +10225,8 @@ function createReplyFeed(signal) {
         }
         if (error) throw error;
         if (done) return;
-        await new Promise((resolve3) => {
-          wake = resolve3;
+        await new Promise((resolve4) => {
+          wake = resolve4;
         });
       }
     }
@@ -9436,8 +10245,14 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
       if (event.type === "send" && connector && typeof event.text === "string" && event.text.length <= 16384) {
         if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
         void connector.sendText(event.text).then(
-          (id) => emit2({ type: "sent", nonce: event.nonce, messageId: id }),
+          (id2) => emit2({ type: "sent", nonce: event.nonce, messageId: id2 }),
           () => emit2({ type: "send-failed", nonce: event.nonce })
+        );
+      } else if (event.type === "send-file" && connector) {
+        if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
+        void connector.sendFile(event).then(
+          (id2) => emit2({ type: "sent", nonce: event.nonce, messageId: id2 }),
+          () => emit2({ type: "send-failed", nonce: event.nonce, code: "HEMING_FILE_DELIVERY_FAILED" })
         );
       } else if (event.type === "managed-tasks" && connector) {
         void connector.sendManagedTasks(event.snapshot).then(
@@ -9447,14 +10262,14 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
       } else if (event.type === "interaction" && connector) {
         if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
         void connector.sendInteraction(event.interaction, event.targetMessageId).then(
-          (id) => emit2({ type: "sent", nonce: event.nonce, messageId: id }),
+          (id2) => emit2({ type: "sent", nonce: event.nonce, messageId: id2 }),
           () => emit2({ type: "send-failed", nonce: event.nonce })
         );
       } else if (active && event.requestId === active.id) {
         if (event.type === "task" || event.type === "question") {
           const send = event.type === "task" ? active.request.updateTask(event.update) : active.request.sendQuestion(event.card, event.targetMessageId);
           void send.then(
-            (id) => emit2({ type: "sent", nonce: event.nonce, messageId: id }),
+            (id2) => emit2({ type: "sent", nonce: event.nonce, messageId: id2 }),
             () => emit2({ type: "send-failed", nonce: event.nonce })
           );
         }
@@ -9516,7 +10331,8 @@ try {
   if (!["pair", "bridge"].includes(command)) {
     process.stdout.write("\u548C\u9E23\u667A\u80FD\u4F53\u8FDE\u63A5\u5668\n  pair [--provider Hermes|OpenClaw|Custom] [--state \u6587\u4EF6]\n  bridge --state \u6587\u4EF6  \uFF08\u672C\u5730 JSONL \u534F\u8BAE\uFF09\n");
   } else {
-    const store = createAgentStateStore(option("--state") || resolve2(homedir(), ".heming-agent/identity.json"));
+    const statePath = option("--state") || resolve3(homedir(), ".heming-agent/identity.json");
+    const store = createAgentStateStore(statePath);
     const transport = createAgentTransport({ origin: option("--origin") });
     const state = await ensureAgentPairing({
       transport,
@@ -9532,7 +10348,8 @@ try {
     else {
       const bridge = createStdioBridge({ signal: controller.signal });
       process.stdin.once("end", () => controller.abort());
-      const connector = createAgentConnector({ transport, store, taskInteractions: true, onMessage: bridge.onMessage, onAction: bridge.onAction, onTaskRequest: bridge.onTaskRequest, onStatus: (status) => emit({ type: "status", status }) });
+      const protectedPaths = [dirname2(resolve3(statePath)), ...option("--protected-root") ? [resolve3(option("--protected-root"))] : []];
+      const connector = createAgentConnector({ transport, store, taskInteractions: true, protectedPaths, onMessage: bridge.onMessage, onAction: bridge.onAction, onTaskRequest: bridge.onTaskRequest, onStatus: (status) => emit({ type: "status", status }) });
       bridge.attach(connector);
       emit({ type: "ready", ownerIdentityId: state.session.ownerIdentityId, conversationId: state.session.conversationId });
       try {

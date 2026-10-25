@@ -7,7 +7,7 @@ from gateway.platforms.base import BasePlatformAdapter, SendResult
 from hermes_constants import get_hermes_home
 
 from .accounts import legacy_path, pairings
-from .adapter import HemingAdapter
+from .adapter import HemingAdapter, extract_file_media, deliver_file_media
 from .member_runtime import wire_member
 from .setup import _pairing_in_use
 
@@ -15,6 +15,11 @@ from .setup import _pairing_in_use
 class HemingTeamAdapter(BasePlatformAdapter):
     REQUIRES_EDIT_FINALIZE = True
     MAX_MESSAGE_LENGTH = 16_384
+
+    extract_media = staticmethod(extract_file_media)
+
+    async def _deliver_media_attachments(self, event, media_files, local_files, **options):
+        return await deliver_file_media(self, event, media_files, local_files, **options)
 
     def __init__(self, config):
         super().__init__(config, Platform("heming"))
@@ -105,6 +110,14 @@ class HemingTeamAdapter(BasePlatformAdapter):
         if not member:
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
         return await member.edit_message(chat_id, message_id, content, finalize=finalize, metadata=metadata)
+
+    async def send_document(self, chat_id, file_path, caption=None, file_name=None,
+                            reply_to=None, metadata=None, **kwargs):
+        member = self._recipient(chat_id)
+        if not member:
+            return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
+        return await member.send_document(chat_id, file_path, caption=caption, file_name=file_name,
+                                          reply_to=reply_to, metadata=metadata, **kwargs)
 
     async def delete_message(self, chat_id, message_id):
         member = self._recipient(chat_id)

@@ -2,6 +2,8 @@
 import asyncio
 import dataclasses
 import json
+import os
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -18,9 +20,51 @@ from .work import WorkCards
 from .managed_tasks import ManagedTasks
 
 
+def extract_file_media(content):
+    """Keep native masking, and accept explicit standalone local files of any suffix."""
+    native = getattr(BasePlatformAdapter, "extract_media", None)
+    media, cleaned = native(content) if native else ([], content)
+    lines, fence = [], None
+    for line in cleaned.splitlines(keepends=True):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
+        if marker:
+            value = marker.group(1)
+            if fence is None:
+                fence = (value[0], len(value))
+            elif value[0] == fence[0] and len(value) >= fence[1]:
+                fence = None
+            lines.append(line)
+            continue
+        match = None if fence else re.fullmatch(
+            r''' {0,3}MEDIA:[ \t]*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s]+))[ \t]*''', line.rstrip("\r\n"))
+        if match:
+            path = os.path.expanduser(next(value for value in match.groups() if value is not None))
+            if Path(path).is_absolute() and "\0" not in path:
+                media.append((path, False))
+                continue
+        lines.append(line)
+    unique = dict.fromkeys(os.path.normpath(path) for path, _ in media)
+    return [(path, False) for path in unique], "".join(lines).strip()
+
+
+async def deliver_file_media(adapter, event, media_files, local_files, *, metadata, record_delivery, **_options):
+    # No image/audio/video dispatch, transcoding, parsing or opening on this channel.
+    paths = dict.fromkeys([path for path, _ in media_files] + list(local_files))
+    for path in paths:
+        result = await adapter.send_document(event.source.chat_id, path, metadata=metadata)
+        record_delivery(result)
+        if not result.success:
+            await adapter._notify_media_delivery_failure(event.source.chat_id, path, metadata=metadata)
+
+
 class HemingAdapter(BasePlatformAdapter):
     REQUIRES_EDIT_FINALIZE = True
     MAX_MESSAGE_LENGTH = 16_384
+
+    extract_media = staticmethod(extract_file_media)
+
+    async def _deliver_media_attachments(self, event, media_files, local_files, **options):
+        return await deliver_file_media(self, event, media_files, local_files, **options)
 
     def __init__(self, config, *, state_path=None, state_listener=None):
         super().__init__(config, Platform("heming"))
@@ -33,6 +77,7 @@ class HemingAdapter(BasePlatformAdapter):
         self._parts = {}
         self._suppressed_parts = set()
         self._sends = {}
+        self._file_deliveries = {}
         self._approvals = ApprovalCards(self)
         self._actions = set()
         self._work = WorkCards(self)
@@ -58,6 +103,7 @@ class HemingAdapter(BasePlatformAdapter):
         self._suppressed_parts.clear()
         self._request_event = None
         self._work.records.clear()
+        self._file_deliveries.clear()
 
     async def connect(self, *, is_reconnect=False):
         if self._process and self._process.returncode is None:
@@ -65,6 +111,7 @@ class HemingAdapter(BasePlatformAdapter):
         self._session = None
         self._clear_request()
         args = ["bridge", "--provider", "Hermes", "--state", str(self.state_path)]
+        args.extend(["--protected-root", str(Path(get_hermes_home()) / "heming")])
         # Developer-only loopback override for isolated integration tests. The
         # connector validates the origin; ordinary users keep the pinned default.
         origin = (getattr(self.config, "extra", None) or {}).get("origin")
@@ -152,13 +199,13 @@ class HemingAdapter(BasePlatformAdapter):
         if not task.cancelled():
             task.exception()  # Retrieve failures without logging message contents.
 
-    async def _bridge_send(self, event):
+    async def _bridge_send(self, event, timeout=20):
         nonce = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
         self._sends[nonce] = future
         try:
             await self._write({**event, "nonce": nonce})
-            result = await asyncio.wait_for(future, 20)
+            result = await asyncio.wait_for(future, timeout)
             if result["type"] != "sent":
                 raise RuntimeError("HEMING_DELIVERY_FAILED")
             return result
@@ -214,6 +261,39 @@ class HemingAdapter(BasePlatformAdapter):
     async def _snapshot(self):
         await self._write({"type": "snapshot", "requestId": self._request["requestId"],
             "text": "\n\n".join(self._parts.values())})
+
+    async def send_document(self, chat_id, file_path, caption=None, file_name=None,
+                            reply_to=None, metadata=None, **kwargs):
+        if not self._session or str(chat_id) != self._session["conversationId"]:
+            return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
+        if reply_to and (not self._request or str(reply_to) != self._request["requestId"]):
+            return SendResult(success=False, error="HEMING_REPLY_CLOSED")
+        if (metadata or {}).get("_interim_send"):
+            return SendResult(success=False, error="HEMING_FILE_FINAL_ONLY")
+        receipt = None
+        try:
+            path = Path(file_path).expanduser().absolute()
+            request_id = "" if (metadata or {}).get("job_id") else (self._request or {}).get("requestId", "")
+            key = (str(chat_id), request_id, str((metadata or {}).get("job_id", "")),
+                   str(path), str(file_name or ""), str(caption or ""), path.stat().st_mtime_ns)
+            if key not in self._file_deliveries and len(self._file_deliveries) >= 128:
+                completed = next((old for old, value in self._file_deliveries.items() if value["settled"]), None)
+                if completed is None:
+                    return SendResult(success=False, error="HEMING_FILE_QUEUE_FULL")
+                del self._file_deliveries[completed]
+            receipt = self._file_deliveries.setdefault(key, {"id": str(uuid.uuid4()), "settled": False})
+            receipt["settled"] = False
+            delivery_id = receipt["id"]
+            result = await self._bridge_send({"type": "send-file", "conversationId": str(chat_id),
+                "filePath": str(path), "fileName": file_name or kwargs.get("filename"),
+                "caption": caption or "", "requestId": request_id, "deliveryId": delivery_id}, timeout=300)
+            return SendResult(success=True, message_id=result.get("messageId"))
+        except (OSError, RuntimeError, ValueError, TypeError, asyncio.TimeoutError):
+            # Never echo an internal absolute path, file contents or provider exception.
+            return SendResult(success=False, error="HEMING_FILE_DELIVERY_FAILED")
+        finally:
+            if receipt is not None:
+                receipt["settled"] = True
 
     async def edit_message(self, chat_id, message_id, content, *, finalize=False, metadata=None):
         if not self._session or not self._request or str(chat_id) != self._session["conversationId"]:
@@ -305,7 +385,7 @@ def register(ctx):
         env_enablement_fn=environment_defaults,
         required_env=[], max_message_length=16_384,
         allowed_users_env="HEMING_ALLOWED_USERS", allow_all_env="HEMING_ALLOW_ALL_USERS",
-        platform_hint="和鸣支持 Markdown。直接使用标题、列表、表格和代码块，勿把整条回复套在代码块中。")
+        platform_hint="和鸣支持文字和通用文件回传，不限定文件后缀，不负责打开、预览、解析或转换文件。需要发送文件时先生成本地文件，然后在单独一行输出 MEDIA:绝对路径；路径含空格时用引号包住路径。不要只回复服务器路径、Markdown 链接或代码块。文件保持原样作为普通附件发送。")
     try:
         from gateway.platform_registry import PlatformEntry
         if "display_tier" in {field.name for field in dataclasses.fields(PlatformEntry)}:

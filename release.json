@@ -1,6 +1,6 @@
 {
   "name": "heming",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "node": ">=24",
   "hermesTested": "v0.22.2"
 }
