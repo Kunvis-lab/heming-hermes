@@ -4416,10 +4416,10 @@ var require_browser = __commonJS({
           text4 = canvas;
           canvas = void 0;
         }
-        return new Promise(function(resolve4, reject) {
+        return new Promise(function(resolve5, reject) {
           try {
             const data = QRCode2.create(text4, opts);
-            resolve4(renderFunc(data, canvas, opts));
+            resolve5(renderFunc(data, canvas, opts));
           } catch (e) {
             reject(e);
           }
@@ -4500,11 +4500,11 @@ var require_server = __commonJS({
     }
     function render(renderFunc, text4, params) {
       if (!params.cb) {
-        return new Promise(function(resolve4, reject) {
+        return new Promise(function(resolve5, reject) {
           try {
             const data = QRCode2.create(text4, params.opts);
             return renderFunc(data, params.opts, function(err, data2) {
-              return err ? reject(err) : resolve4(data2);
+              return err ? reject(err) : resolve5(data2);
             });
           } catch (e) {
             reject(e);
@@ -4571,7 +4571,7 @@ var require_lib = __commonJS({
 // integrations/heming-agent/cli.mjs
 var import_qrcode = __toESM(require_lib(), 1);
 import { homedir } from "node:os";
-import { dirname as dirname2, resolve as resolve3 } from "node:path";
+import { dirname as dirname2, resolve as resolve4 } from "node:path";
 
 // integrations/heming-agent/transport.mjs
 import { request as httpsRequest } from "node:https";
@@ -4582,9 +4582,9 @@ function createAgentTransport({ origin = HEMING_ORIGIN, fetchImpl } = {}) {
   const base = new URL(origin);
   if (base.origin !== origin || !["https:", "http:"].includes(base.protocol) || base.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(base.hostname))
     throw Error("AGENT_ORIGIN_NOT_SECURE");
-  const transportFetch = fetchImpl || (base.origin !== HEMING_ORIGIN ? globalThis.fetch : (url, options = {}) => new Promise((resolve4, reject) => {
+  const transportFetch = fetchImpl || (base.origin !== HEMING_ORIGIN ? globalThis.fetch : (url, options = {}) => new Promise((resolve5, reject) => {
     const request = httpsRequest(url, { method: options.method, headers: options.headers, ca, signal: options.signal }, (response) => {
-      resolve4(new Response(Readable.toWeb(response), { status: response.statusCode, headers: response.headers }));
+      resolve5(new Response(Readable.toWeb(response), { status: response.statusCode, headers: response.headers }));
     });
     request.once("error", reject);
     request.end(options.body);
@@ -6642,12 +6642,12 @@ function zeroArray(value) {
 }
 
 // integrations/heming-agent/pairing.mjs
-async function beginAgentPairing(transport, provider = "Custom") {
+async function beginAgentPairing(transport, provider = "Custom", signal) {
   const identityKeys = await createIdentityKeyPair();
   const proof = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   const proofPrivateKey = await crypto.subtle.exportKey("jwk", proof.privateKey);
   const devicePublicKey = Buffer.from(await crypto.subtle.exportKey("spki", proof.publicKey)).toString("base64");
-  const pairing = await transport.api("/api/v1/agents/pairings", { body: { provider, publicKey: identityKeys.publicKey, devicePublicKey } });
+  const pairing = await transport.api("/api/v1/agents/pairings", { body: { provider, publicKey: identityKeys.publicKey, devicePublicKey }, signal });
   return { ...pairing, privateKey: identityKeys.privateKey, proofPrivateKey, devicePublicKey };
 }
 async function pollAgentPairing(transport, pending, signal) {
@@ -6676,7 +6676,7 @@ async function ensureAgentPairing({ transport, store, provider, onQr, signal }) 
     if (store.read()?.session) return store.read();
     let pending = store.read()?.pending;
     if (!pending || Date.parse(pending.expiresAt) <= Date.now()) {
-      pending = await beginAgentPairing(transport, provider);
+      pending = await beginAgentPairing(transport, provider, signal);
       store.write({ pending });
     }
     await onQr({ qr: pending.qr, expiresAt: pending.expiresAt });
@@ -7222,8 +7222,15 @@ function normalizeItem(value) {
     sentAt: normalizeIsoTimestamp(value.sentAt, "CHAT_RECORD_SENT_AT"),
     type
   };
-  if (type === "text")
+  if (type === "text") {
     item.text = requiredString(value.text, "CHAT_RECORD_TEXT", 1200);
+    if (value.continuation) {
+      const { id: id2, part, total } = value.continuation;
+      if (!Number.isInteger(part) || !Number.isInteger(total) || total < 2 || total > MAX_CHAT_RECORD_ITEMS || part < 0 || part >= total)
+        throw new Error("INVALID_CHAT_RECORD_CONTINUATION");
+      item.continuation = { id: requiredString(id2, "CHAT_RECORD_CONTINUATION", 80), part, total };
+    }
+  }
   if (type === "location") item.location = normalizeLocation(value.location);
   if (type === "poll") item.poll = normalizePoll(value.poll);
   if (type === "attachment" || type === "media") {
@@ -7232,6 +7239,10 @@ function normalizeItem(value) {
       type === "media" ? "media" : "file"
     );
     item.text = optionalText(value.text, 240);
+    if (["image", "video", "voice", "file", "media"].includes(value.contentType)) {
+      normalizeMessageAttachments({ attachments: item.attachments }, value.contentType);
+      item.contentType = value.contentType;
+    }
   }
   return item;
 }
@@ -7250,6 +7261,17 @@ function normalizeChatRecordPayload(value) {
     title: requiredString(value.title, "CHAT_RECORD_TITLE", 120),
     items: value.items.map(normalizeItem)
   };
+  for (let index = 0; index < normalized.items.length; index++) {
+    const first = normalized.items[index], sequence = first.continuation;
+    if (!sequence) continue;
+    if (sequence.part !== 0) throw new Error("INVALID_CHAT_RECORD_CONTINUATION");
+    for (let part = 0; part < sequence.total; part++) {
+      const next = normalized.items[index + part];
+      if (next?.type !== "text" || next.continuation?.id !== sequence.id || next.continuation?.part !== part || next.continuation?.total !== sequence.total || next.senderName !== first.senderName || next.sentAt !== first.sentAt)
+        throw new Error("INVALID_CHAT_RECORD_CONTINUATION");
+    }
+    index += sequence.total - 1;
+  }
   const attachmentCount = normalized.items.reduce(
     (total, item) => total + (item.attachments?.length || 0),
     0
@@ -7260,6 +7282,18 @@ function normalizeChatRecordPayload(value) {
     throw new Error("CHAT_RECORD_SIZE_LIMIT_EXCEEDED");
   return normalized;
 }
+function chatRecordDisplayItems(record) {
+  const items = record?.items || [];
+  return items.reduce((result, item, index) => {
+    const sequence = item.continuation;
+    if (!sequence) result.push(item);
+    else if (sequence.part === 0) result.push({
+      ...item,
+      text: items.slice(index, index + sequence.total).map((part) => part.text).join("")
+    });
+    return result;
+  }, []);
+}
 
 // shared/libraryDocumentPayload.mjs
 var LIBRARY_TITLE_LIMIT = 80;
@@ -7267,6 +7301,17 @@ function normalizeLibraryDocument(value) {
   if (!value || value.version !== 1 || typeof value.title !== "string" || !value.title.trim() || value.title.length > LIBRARY_TITLE_LIMIT || typeof value.sourceName !== "string" || value.sourceName.length > 64)
     throw Error("INVALID_LIBRARY_DOCUMENT");
   return { version: 1, title: value.title.trim(), sourceName: value.sourceName };
+}
+
+// shared/librarySyncPayload.mjs
+var LIBRARY_SYNC_PART_SIZE = 32768;
+var LIBRARY_SYNC_MAX_PARTS = 1024;
+function normalizeLibrarySyncPayload(type, value) {
+  const data = value || {};
+  if (type === "library.request") return {};
+  if (!/^[a-f0-9]{64}$/.test(data.hash || "") || typeof data.transferId !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(data.transferId) || !Number.isInteger(data.total) || data.total < 1 || data.total > LIBRARY_SYNC_MAX_PARTS || !Number.isInteger(data.part) || data.part < 0 || data.part >= data.total || typeof data.text !== "string" || !data.text.length || data.text.length > LIBRARY_SYNC_PART_SIZE)
+    throw Error("INVALID_LIBRARY_SYNC");
+  return { transferId: data.transferId, hash: data.hash, part: data.part, total: data.total, text: data.text };
 }
 
 // shared/handoverReference.mjs
@@ -7371,7 +7416,13 @@ var STATES = /* @__PURE__ */ new Set(["working", "generating", "completed", "fai
 function normalizeAgentReply(value) {
   if (!value || typeof value !== "object" || !STATES.has(value.state) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5 || typeof value.requestMessageId !== "string" || !value.requestMessageId || value.requestMessageId.length > 128)
     throw Error("INVALID_AGENT_REPLY");
-  return { state: value.state, revision: value.revision, requestMessageId: value.requestMessageId };
+  if (value.presentation !== void 0 && value.presentation !== "answer") throw Error("INVALID_AGENT_REPLY_PRESENTATION");
+  return {
+    state: value.state,
+    revision: value.revision,
+    requestMessageId: value.requestMessageId,
+    ...value.presentation === "answer" ? { presentation: "answer" } : {}
+  };
 }
 
 // shared/agentInteraction.mjs
@@ -7901,7 +7952,8 @@ function normalizeGroupStateData(value) {
     keyVersion: keyVersion(value?.keyVersion),
     actorIdentityId: Math.max(0, Number(value?.actorIdentityId) || 0),
     targetIdentityId,
-    targetIdentityIds: normalizeIdentityIds(value?.targetIdentityIds)
+    targetIdentityIds: normalizeIdentityIds(value?.targetIdentityIds),
+    ...action === "member-removed" && value?.targetDisplayName ? { targetDisplayName: boundedText(value.targetDisplayName, 128, "INVALID_GROUP_TARGET_NAME") } : {}
   };
 }
 function normalizeGroupSyncRequestData(value) {
@@ -7937,6 +7989,8 @@ var EVENT_TYPES = /* @__PURE__ */ new Set([
   "conversation.settings",
   "conversation.read-marker",
   "contact.settings",
+  "library.request",
+  "library.snapshot",
   "message.reaction",
   "message.ephemeral.start",
   "message.destroy",
@@ -7961,6 +8015,7 @@ function eventId() {
   return `event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 function validateData(type, value) {
+  if (type === "library.request" || type === "library.snapshot") return normalizeLibrarySyncPayload(type, value);
   const data = value && typeof value === "object" && !Array.isArray(value) ? structuredClone(value) : {};
   if (type === "message.create") {
     data.messageId = requiredString(
@@ -8064,7 +8119,7 @@ function validateData(type, value) {
       };
     } else if (data.contentType === "chat-record") {
       data.chatRecord = normalizeChatRecordPayload(data.chatRecord);
-      data.text = `[\u804A\u5929\u8BB0\u5F55] ${data.chatRecord.title} \xB7 ${data.chatRecord.items.length} \u6761`;
+      data.text = `[\u804A\u5929\u8BB0\u5F55] ${data.chatRecord.title} \xB7 ${chatRecordDisplayItems(data.chatRecord).length} \u6761`;
     }
     if (data.replyTo) {
       data.replyTo = {
@@ -8183,6 +8238,8 @@ function validateData(type, value) {
     return normalizeMessageDestroyData(data);
   } else if (type === "receipt.delivered" || type === "receipt.read") {
     data.messageIds = normalizeMessageIds(data.messageIds);
+    if (data.targetIdentityId != null && (!Number.isSafeInteger(data.targetIdentityId) || data.targetIdentityId <= 0))
+      throw new Error("INVALID_RECEIPT_TARGET");
   } else if (type === "typing") {
     data.active = Boolean(data.active);
   } else if (type === "poll.vote") {
@@ -8372,7 +8429,8 @@ async function listenToSse({
   signal,
   connectTimeoutMs = 12e3,
   idleTimeoutMs = 45e3,
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
+  headers = {}
 }) {
   const controller2 = new AbortController();
   let timeoutCode = "";
@@ -8383,14 +8441,33 @@ async function listenToSse({
     controller2.abort(streamError(timeoutCode));
   }, connectTimeoutMs);
   let reader;
+  const cancelRead = () => {
+    reader?.cancel().catch(() => {
+    });
+  };
+  controller2.signal.addEventListener("abort", cancelRead, { once: true });
+  let dispatchTail = Promise.resolve();
+  let queuedEvents = 0;
+  let dispatchError;
+  const dispatch = (event) => {
+    if (++queuedEvents > 256) throw streamError("EVENT_STREAM_CONSUMER_BACKPRESSURE");
+    dispatchTail = dispatchTail.then(async () => {
+      if (!controller2.signal.aborted) await onEvent(event);
+    }).catch((error) => {
+      dispatchError = streamError("EVENT_STREAM_HANDLER_FAILED", error);
+      controller2.abort(dispatchError);
+    }).finally(() => {
+      queuedEvents--;
+    });
+  };
   try {
     const response = await fetchImpl(url, {
       redirect: "error",
-      headers: { "x-device-token": token4 },
+      headers: { ...headers, "x-device-token": token4 },
       signal: controller2.signal
     });
     if (!response.ok || !response.body?.getReader)
-      throw streamError("EVENT_STREAM_UNAVAILABLE");
+      throw Object.assign(streamError("EVENT_STREAM_UNAVAILABLE"), { status: response.status });
     clearTimeout(timer);
     const armIdleTimer = () => {
       clearTimeout(timer);
@@ -8414,16 +8491,18 @@ async function listenToSse({
         throw streamError("EVENT_STREAM_FRAME_TOO_LARGE");
       for (const chunk of chunks) {
         const data = chunk.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
-        if (data) await onEvent(JSON.parse(data));
+        if (data) dispatch(JSON.parse(data));
       }
     }
     if (!signal?.aborted) throw streamError("EVENT_STREAM_CLOSED");
   } catch (error) {
     if (signal?.aborted) return;
+    if (dispatchError) throw dispatchError;
     if (timeoutCode) throw streamError(timeoutCode, error);
     throw error;
   } finally {
     clearTimeout(timer);
+    controller2.signal.removeEventListener("abort", cancelRead);
     signal?.removeEventListener("abort", abort);
     await reader?.cancel().catch(() => {
     });
@@ -9293,14 +9372,30 @@ function splitAgentReply(text4, limit = 16384) {
 function createReplyDelivery({ channel, state, persist, beforeClear = async () => {
 } }) {
   async function update(job2, text4, status) {
+    const agentReply = {
+      requestMessageId: job2.requestMessageId,
+      revision: job2.revision,
+      state: status,
+      ...job2.answerStream ? { presentation: "answer" } : {}
+    };
     if (!job2.created) {
-      await channel.send(createChatEvent("message.create", {
-        messageId: job2.replyId,
-        contentType: "text",
-        text: text4,
-        agentReply: { requestMessageId: job2.requestMessageId, revision: job2.revision, state: status }
-      }, { eventId: job2.replyId }));
+      try {
+        await channel.send(createChatEvent("message.create", {
+          messageId: job2.replyId,
+          contentType: "text",
+          text: text4,
+          agentReply
+        }, { eventId: job2.replyId }));
+      } catch (error) {
+        if (state.outbox?.clientMessageId === job2.replyId) {
+          job2.created = true;
+          job2.text = text4;
+          persist();
+        }
+        throw error;
+      }
       job2.created = true;
+      job2.text = text4;
       persist();
       return;
     }
@@ -9310,8 +9405,14 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
     await channel.send(createChatEvent("agent.reply", {
       targetMessageId: job2.replyId,
       text: job2.text,
-      agentReply: { requestMessageId: job2.requestMessageId, revision: job2.revision, state: status }
+      agentReply: { ...agentReply, revision: job2.revision }
     }));
+  }
+  async function preview(job2, text4) {
+    const head = splitAgentReply(text4)[0];
+    if (!head.trim() || job2.finalStatus || job2.created && head === job2.text) return;
+    job2.answerStream = true;
+    await update(job2, head, "generating");
   }
   function prepare(job2, text4, status) {
     job2.finalStatus = status;
@@ -9320,9 +9421,14 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
     persist();
   }
   async function finish(job2) {
+    const pendingCreate = !job2.created && state.outbox?.clientMessageId === job2.replyId;
     await channel.flushOutbox();
+    if (pendingCreate) {
+      job2.created = true;
+      persist();
+    }
     if (!job2.finalStatus) prepare(job2, "\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u81EA\u52A8\u91CD\u8DD1\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002", "failed");
-    if (job2.finalStatus === "completed" && job2.fileMessageIds?.length && job2.parts.every((part) => !part.text.trim())) {
+    if (!job2.created && job2.finalStatus === "completed" && job2.fileMessageIds?.length && job2.parts.every((part) => !part.text.trim())) {
       await beforeClear(job2);
       state.job = null;
       persist();
@@ -9348,20 +9454,20 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
     state.job = null;
     persist();
   }
-  return { prepare, finish };
+  return { prepare, finish, preview };
 }
 
 // integrations/heming-agent/abortable.mjs
 function abortable(value, signal) {
   if (!signal) return Promise.resolve(value);
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve5, reject) => {
     const abort = () => reject(signal.reason || Error("AGENT_ABORTED"));
     if (signal.aborted) {
       abort();
       return;
     }
     signal.addEventListener("abort", abort, { once: true });
-    Promise.resolve(value).then(resolve4, reject).finally(() => signal.removeEventListener("abort", abort));
+    Promise.resolve(value).then(resolve5, reject).finally(() => signal.removeEventListener("abort", abort));
   });
 }
 
@@ -9633,6 +9739,41 @@ async function completeAttachmentChunkMetadata(metadata, chunks) {
   };
 }
 
+// shared/attachmentRequest.mjs
+function attachmentAbortError() {
+  return new DOMException("ATTACHMENT_UPLOAD_ABORTED", "AbortError");
+}
+async function attachmentRequest(operation, { signal, timeoutMs = 3e4 } = {}) {
+  if (signal?.aborted) throw attachmentAbortError();
+  const controller2 = new AbortController();
+  let expired = false;
+  const abort = () => controller2.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => {
+    expired = true;
+    controller2.abort();
+  }, timeoutMs);
+  try {
+    const result = await operation(controller2.signal);
+    if (signal?.aborted) throw attachmentAbortError();
+    if (expired) throw Error("ATTACHMENT_REQUEST_TIMEOUT");
+    return result;
+  } catch (error) {
+    if (signal?.aborted) throw attachmentAbortError();
+    if (expired) throw Object.assign(Error("ATTACHMENT_REQUEST_TIMEOUT"), { code: "ATTACHMENT_REQUEST_TIMEOUT" });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+function retryableAttachmentError(error) {
+  if (error?.name === "AbortError") return false;
+  if (Number.isInteger(error?.status))
+    return [408, 425, 429].includes(error.status) || error.status >= 500 && error.status < 600 && ![501, 505].includes(error.status);
+  return error instanceof TypeError || error?.code === "ATTACHMENT_REQUEST_TIMEOUT";
+}
+
 // shared/attachmentMultipartTransport.mjs
 function abortError() {
   const error = new Error("ATTACHMENT_UPLOAD_ABORTED");
@@ -9640,37 +9781,57 @@ function abortError() {
   return error;
 }
 function delay2(milliseconds, signal) {
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve5, reject) => {
     if (signal?.aborted) return reject(abortError());
-    const timer = setTimeout(resolve4, milliseconds);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(abortError());
-      },
-      { once: true }
-    );
+    const abort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve5();
+    }, milliseconds);
+    signal?.addEventListener("abort", abort, { once: true });
   });
 }
-async function jsonRequest(fetchImpl, url, token4, options = {}) {
-  const response = await fetchImpl(url, {
-    redirect: "error",
-    method: options.method || "GET",
-    signal: options.signal,
-    headers: {
-      "x-device-token": token4,
-      ...options.body ? { "content-type": "application/json" } : {},
-      ...options.headers || {}
-    },
-    body: options.body ? JSON.stringify(options.body) : void 0
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(payload.error || `BACKEND_${response.status}`);
-    error.status = response.status;
+async function runWorkers(concurrency, signal, worker) {
+  if (signal?.aborted) throw abortError();
+  const controller2 = new AbortController();
+  const abort = () => controller2.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const workers = Array.from({ length: Math.max(1, Math.min(4, concurrency)) }, () => worker(controller2.signal));
+  try {
+    await Promise.all(workers);
+  } catch (error) {
+    controller2.abort();
+    await Promise.allSettled(workers);
     throw error;
+  } finally {
+    signal?.removeEventListener("abort", abort);
   }
+}
+async function jsonRequest(fetchImpl, url, token4, options = {}) {
+  return attachmentRequest(async (signal) => {
+    const response = await fetchImpl(url, {
+      redirect: "error",
+      method: options.method || "GET",
+      signal,
+      headers: {
+        "x-device-token": token4,
+        ...options.body ? { "content-type": "application/json" } : {},
+        ...options.headers || {}
+      },
+      body: options.body ? JSON.stringify(options.body) : void 0
+    });
+    return readJsonResponse(response);
+  }, options);
+}
+async function readJsonResponse(response) {
+  const payload = await response.json().catch((error) => {
+    if (response.ok) throw error?.name === "AbortError" ? error : Error("ATTACHMENT_RESPONSE_INVALID");
+    return {};
+  });
+  if (!response.ok) throw Object.assign(Error(payload.error || `BACKEND_${response.status}`), { status: response.status });
   return payload;
 }
 async function putPartWithRetry({
@@ -9679,32 +9840,29 @@ async function putPartWithRetry({
   token: token4,
   digest,
   bytes,
-  signal
+  signal,
+  timeoutMs
 }) {
   let lastError;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (signal?.aborted) throw abortError();
     try {
-      const response = await fetchImpl(url, {
-        redirect: "error",
-        method: "PUT",
-        signal,
-        headers: {
-          "x-device-token": token4,
-          "content-type": "application/octet-stream",
-          "x-attachment-part-digest": digest
-        },
-        body: bytes
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const error = new Error(payload.error || `BACKEND_${response.status}`);
-        error.status = response.status;
-        throw error;
-      }
-      return payload;
+      return await attachmentRequest(async (requestSignal) => {
+        const response = await fetchImpl(url, {
+          redirect: "error",
+          method: "PUT",
+          signal: requestSignal,
+          headers: {
+            "x-device-token": token4,
+            "content-type": "application/octet-stream",
+            "x-attachment-part-digest": digest
+          },
+          body: bytes
+        });
+        return readJsonResponse(response);
+      }, { signal, timeoutMs });
     } catch (error) {
-      if (error?.name === "AbortError" || error?.status === 409) throw error;
+      if (!retryableAttachmentError(error)) throw error;
       lastError = error;
       if (attempt < 3) await delay2(250 * 3 ** attempt, signal);
     }
@@ -9718,7 +9876,8 @@ async function resolveUpload({
   conversationId,
   file,
   resume,
-  signal
+  signal,
+  timeoutMs
 }) {
   if (resume?.uploadId && resume?.encryption) {
     if (resume.encryption.version !== 2 || resume.encryption.plainBytes !== file.size)
@@ -9728,7 +9887,7 @@ async function resolveUpload({
         fetchImpl,
         `${baseUrl}/api/v1/attachments/${resume.uploadId}/upload`,
         token4,
-        { signal }
+        { signal, timeoutMs }
       );
       return {
         uploadId: resume.uploadId,
@@ -9747,6 +9906,7 @@ async function resolveUpload({
     {
       method: "POST",
       signal,
+      timeoutMs,
       body: {
         plainBytes: encryption.plainBytes,
         cipherBytes: encryption.plainBytes + encryption.chunkCount * 16,
@@ -9767,7 +9927,8 @@ async function uploadEncryptedAttachmentMultipart({
   onCheckpoint,
   onProgress,
   fetchImpl = globalThis.fetch,
-  concurrency = 2
+  concurrency = 2,
+  requestTimeoutMs = 6e4
 }) {
   if (!file?.slice || !Number.isInteger(file.size) || file.size < 1)
     throw new Error("ATTACHMENT_FILE_REQUIRED");
@@ -9778,7 +9939,8 @@ async function uploadEncryptedAttachmentMultipart({
     conversationId,
     file,
     resume,
-    signal
+    signal,
+    timeoutMs: requestTimeoutMs
   });
   await onCheckpoint?.({
     uploadId: upload.uploadId,
@@ -9790,9 +9952,9 @@ async function uploadEncryptedAttachmentMultipart({
     { length: upload.encryption.chunkCount },
     (_, index) => index
   );
-  async function worker() {
+  async function worker(signal2) {
     while (pending.length) {
-      if (signal?.aborted) throw abortError();
+      if (signal2?.aborted) throw abortError();
       const index = pending.shift();
       const start = index * upload.encryption.chunkBytes;
       const plain = new Uint8Array(
@@ -9813,7 +9975,8 @@ async function uploadEncryptedAttachmentMultipart({
           token: token4,
           digest: encrypted.descriptor.digest,
           bytes: encrypted.cipherBytes,
-          signal
+          signal: signal2,
+          timeoutMs: requestTimeoutMs
         });
       uploadedBytes += encrypted.descriptor.cipherBytes;
       onProgress?.({
@@ -9822,12 +9985,7 @@ async function uploadEncryptedAttachmentMultipart({
       });
     }
   }
-  await Promise.all(
-    Array.from(
-      { length: Math.max(1, Math.min(4, concurrency)) },
-      () => worker()
-    )
-  );
+  await runWorkers(concurrency, signal, worker);
   const metadata = await completeAttachmentChunkMetadata(
     upload.encryption,
     descriptors
@@ -9839,6 +9997,7 @@ async function uploadEncryptedAttachmentMultipart({
     {
       method: "POST",
       signal,
+      timeoutMs: requestTimeoutMs,
       body: { digest: metadata.digest, chunks: metadata.chunks }
     }
   );
@@ -9997,11 +10156,145 @@ function createFileDelivery({ channel, transport, state, persist, protectedPaths
   };
 }
 
+// integrations/heming-agent/hermesInvitations.mjs
+import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync, existsSync } from "node:fs";
+import { join, resolve as resolve3 } from "node:path";
+
+// shared/agentInvitation.mjs
+var AGENT_INVITATION_ID = /^[a-f0-9]{32}$/;
+function agentInvitationReadyChallenge(id2, pairing, recipientId, completed = false) {
+  if (!AGENT_INVITATION_ID.test(id2) || !pairing || pairing.provider !== "Hermes" || !Number.isSafeInteger(Number(recipientId)) || Number(recipientId) <= 0) throw Error("INVALID_AGENT_INVITATION");
+  const key = typeof pairing.public_key === "string" ? JSON.parse(pairing.public_key) : pairing.publicKey;
+  return JSON.stringify([
+    "heming.agent-invitation.ready",
+    2,
+    completed ? "completed" : "ready",
+    id2,
+    Number(recipientId),
+    pairing.code,
+    "Hermes",
+    key.x,
+    pairing.device_public_key || pairing.devicePublicKey
+  ]);
+}
+
+// integrations/heming-agent/hermesInvitations.mjs
+function createHermesInvitationWorker({ transport, state, root, onStatus = () => {
+} }) {
+  const directory = resolve3(root), lifetime = new AbortController(), jobs = /* @__PURE__ */ new Map();
+  let fetching = null, nextCheck = 0, unsupported = false;
+  function safeDirectory(path) {
+    if (existsSync(path)) {
+      const stat = lstatSync2(path);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error("AGENT_INVITATION_PATH_UNSAFE");
+    } else mkdirSync2(path, { mode: 448 });
+  }
+  function accountStore(id2) {
+    if (!AGENT_INVITATION_ID.test(id2)) throw Error("INVALID_AGENT_INVITATION");
+    safeDirectory(directory);
+    const accounts = join(directory, "accounts");
+    safeDirectory(accounts);
+    let active = existsSync(join(directory, "identity.json")) ? 1 : 0, targetActive = false;
+    for (const name of readdirSync(accounts)) {
+      if (!AGENT_INVITATION_ID.test(name)) continue;
+      const folder2 = join(accounts, name);
+      safeDirectory(folder2);
+      const file = join(folder2, "identity.json");
+      if (!existsSync(file)) continue;
+      const saved = createAgentStateStore(file).read();
+      if (saved?.session || Date.parse(saved?.pending?.expiresAt) > Date.now()) {
+        active++;
+        if (name === id2) targetActive = true;
+      }
+    }
+    const folder = join(accounts, id2);
+    if (!targetActive && active >= 128) throw Error("AGENT_INVITATION_ACCOUNT_LIMIT");
+    safeDirectory(folder);
+    return createAgentStateStore(join(folder, "identity.json"));
+  }
+  async function pair(ticket, signal) {
+    if (!AGENT_INVITATION_ID.test(ticket.id) || !Number.isSafeInteger(ticket.recipientIdentityId) || ticket.recipientIdentityId <= 0 || !(Date.parse(ticket.expiresAt) > Date.now())) throw Error("INVALID_AGENT_INVITATION");
+    const store = accountStore(ticket.id), boundSignal = AbortSignal.any([signal, lifetime.signal]);
+    store.lock();
+    try {
+      const saved = store.read();
+      const announce = async (record2, completed = false) => {
+        const key = await crypto.subtle.importKey("jwk", state.proofPrivateKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+        const signature = Buffer.from(await crypto.subtle.sign(
+          { name: "ECDSA", hash: "SHA-256" },
+          key,
+          new TextEncoder().encode(agentInvitationReadyChallenge(ticket.id, record2, ticket.recipientIdentityId, completed))
+        )).toString("base64");
+        return transport.api(`/api/v1/agent-invitations/${ticket.id}/ready`, {
+          token: state.session.token,
+          body: { code: record2.code, signature, ...completed ? { completed: true } : {} },
+          signal: boundSignal
+        });
+      };
+      if (saved?.session) {
+        await announce({ code: ticket.code, provider: "Hermes", publicKey: saved.session.identity.publicKey, devicePublicKey: saved.devicePublicKey }, true);
+        return;
+      }
+      if (ticket.code && saved?.pending?.code !== ticket.code) throw Error("AGENT_INVITATION_STATE_MISSING");
+      let pending = saved?.pending;
+      if (!pending || !ticket.code && Date.parse(pending.expiresAt) <= Date.now()) {
+        pending = await beginAgentPairing(transport, "Hermes", boundSignal);
+        store.write({ pending });
+      }
+      const record = { ...pending, provider: "Hermes", publicKey: { x: pending.privateKey.x } };
+      const ready = await announce(record);
+      if (ready.expiresAt !== ticket.expiresAt) throw Error("INVALID_AGENT_INVITATION");
+      pending = { ...pending, expiresAt: ready.expiresAt };
+      store.write({ pending });
+      const paired = await pollAgentPairing(transport, pending, boundSignal);
+      if (paired) {
+        store.write(paired);
+        await announce(record, true);
+        onStatus("invitation-paired");
+      }
+    } finally {
+      store.unlock();
+    }
+  }
+  async function sync(signal) {
+    if (unsupported || lifetime.signal.aborted || signal?.aborted || Date.now() < nextCheck) return;
+    if (!fetching) fetching = (async () => {
+      const result = await transport.api("/api/v1/agent-invitations", {
+        token: state.session.token,
+        signal: signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal
+      });
+      if (!Array.isArray(result.invitations) || result.invitations.length > 10) throw Error("INVALID_AGENT_INVITATION");
+      const listed = new Set(result.invitations.map((ticket) => ticket.id));
+      for (const [id2, job2] of jobs) if (!listed.has(id2)) job2.controller.abort();
+      for (const ticket of result.invitations) {
+        if (jobs.has(ticket.id)) continue;
+        const controller2 = new AbortController();
+        const job2 = pair(ticket, AbortSignal.any([signal || lifetime.signal, controller2.signal])).catch(() => {
+          if (!lifetime.signal.aborted && !signal?.aborted && !controller2.signal.aborted) onStatus("invitation-unavailable");
+        }).finally(() => jobs.delete(ticket.id));
+        jobs.set(ticket.id, { promise: job2, controller: controller2 });
+      }
+    })().catch((error) => {
+      if (error.status === 404) unsupported = true;
+      nextCheck = Date.now() + 3e4;
+    }).finally(() => {
+      fetching = null;
+    });
+    await fetching;
+  }
+  return { sync, async stop() {
+    lifetime.abort();
+    await fetching?.catch(() => {
+    });
+    await Promise.allSettled([...jobs.values()].map((job2) => job2.promise));
+  } };
+}
+
 // integrations/heming-agent/connector.mjs
 function createAgentConnector({ transport, store, onMessage, onAction = () => {
 }, onTaskRequest = () => {
 }, onStatus = () => {
-}, taskTimeoutMs = 6e5, taskInteractions = false, protectedPaths = [] }) {
+}, taskTimeoutMs = 6e5, taskInteractions = false, streamReplies = false, protectedPaths = [], invitationRoot }) {
   const state = store.read();
   if (!state?.session?.token) throw Error("AGENT_PAIRING_REQUIRED");
   state.inbox ||= [];
@@ -10013,6 +10306,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
   const interactions = createInteractionDelivery({ channel, state, persist });
   const managedTasks = createManagedTaskDelivery({ channel, state, persist, onRequest: onTaskRequest });
   const files = createFileDelivery({ channel, transport, state, persist, protectedPaths });
+  const invitations = invitationRoot ? createHermesInvitationWorker({ transport, state, root: invitationRoot, onStatus }) : null;
   let taskSignal;
   let activeSync = null;
   let activeDrain = null;
@@ -10040,6 +10334,8 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         sendQuestion: (card, target) => work.question(job2.requestMessageId, card, target)
       }), taskSignal);
       let text4 = "";
+      let lastPreviewAt = -Infinity;
+      let previewPaused = false;
       if (result?.[Symbol.asyncIterator]) {
         const iterator = result[Symbol.asyncIterator]();
         while (true) {
@@ -10048,6 +10344,15 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
           const delta = next.value;
           text4 = delta?.mode === "snapshot" ? String(delta.text || "") : text4 + String(delta || "");
           if (text4.length > 131072) throw Error("AGENT_REPLY_LIMIT");
+          if (streamReplies && !previewPaused && Date.now() - lastPreviewAt >= 750) {
+            try {
+              await delivery.preview(job2, text4);
+            } catch {
+              previewPaused = true;
+              onStatus("reply-preview-paused");
+            }
+            lastPreviewAt = Date.now();
+          }
         }
       } else text4 = String(result?.text ?? result ?? "");
       taskSignal.throwIfAborted();
@@ -10134,9 +10439,11 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       await files.flush(signal);
       if (state.job) await delivery.finish(state.job);
       timer = setInterval(() => {
+        void invitations?.sync(signal);
         void sync(signal).catch(() => onStatus("reconnecting"));
       }, 15e3);
       timer.unref?.();
+      void invitations?.sync(signal);
       let attempt = 0;
       while (!signal?.aborted) {
         try {
@@ -10150,6 +10457,10 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
               if (event.type === "agent.revoked") throw Object.assign(Error("AGENT_REVOKED"), { status: 403 });
               attempt = 0;
               onStatus("connected");
+              if (event.type === "agent.invitation.requested") {
+                void invitations?.sync(signal);
+                return;
+              }
               void sync(signal).catch((error) => onStatus(error.status === 403 ? "revoked" : "reconnecting"));
             }
           });
@@ -10162,6 +10473,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       }
     } finally {
       clearInterval(timer);
+      await invitations?.stop();
       await activeSync?.catch(() => {
       });
       await activeDrain?.catch(() => {
@@ -10225,8 +10537,8 @@ function createReplyFeed(signal) {
         }
         if (error) throw error;
         if (done) return;
-        await new Promise((resolve4) => {
-          wake = resolve4;
+        await new Promise((resolve5) => {
+          wake = resolve5;
         });
       }
     }
@@ -10331,7 +10643,7 @@ try {
   if (!["pair", "bridge"].includes(command)) {
     process.stdout.write("\u548C\u9E23\u667A\u80FD\u4F53\u8FDE\u63A5\u5668\n  pair [--provider Hermes|OpenClaw|Custom] [--state \u6587\u4EF6]\n  bridge --state \u6587\u4EF6  \uFF08\u672C\u5730 JSONL \u534F\u8BAE\uFF09\n");
   } else {
-    const statePath = option("--state") || resolve3(homedir(), ".heming-agent/identity.json");
+    const statePath = option("--state") || resolve4(homedir(), ".heming-agent/identity.json");
     const store = createAgentStateStore(statePath);
     const transport = createAgentTransport({ origin: option("--origin") });
     const state = await ensureAgentPairing({
@@ -10348,8 +10660,19 @@ try {
     else {
       const bridge = createStdioBridge({ signal: controller.signal });
       process.stdin.once("end", () => controller.abort());
-      const protectedPaths = [dirname2(resolve3(statePath)), ...option("--protected-root") ? [resolve3(option("--protected-root"))] : []];
-      const connector = createAgentConnector({ transport, store, taskInteractions: true, protectedPaths, onMessage: bridge.onMessage, onAction: bridge.onAction, onTaskRequest: bridge.onTaskRequest, onStatus: (status) => emit({ type: "status", status }) });
+      const protectedPaths = [dirname2(resolve4(statePath)), ...option("--protected-root") ? [resolve4(option("--protected-root"))] : []];
+      const connector = createAgentConnector({
+        transport,
+        store,
+        taskInteractions: true,
+        protectedPaths,
+        streamReplies: option("--provider") === "Hermes",
+        ...option("--provider") === "Hermes" && option("--protected-root") ? { invitationRoot: resolve4(option("--protected-root")) } : {},
+        onMessage: bridge.onMessage,
+        onAction: bridge.onAction,
+        onTaskRequest: bridge.onTaskRequest,
+        onStatus: (status) => emit({ type: "status", status })
+      });
       bridge.attach(connector);
       emit({ type: "ready", ownerIdentityId: state.session.ownerIdentityId, conversationId: state.session.conversationId });
       try {

@@ -7,12 +7,12 @@ from gateway.platforms.base import BasePlatformAdapter, SendResult
 from hermes_constants import get_hermes_home
 
 from .accounts import legacy_path, pairings
-from .adapter import HemingAdapter, extract_file_media, deliver_file_media
+from .adapter import HemingAdapter, HemingReplyPresentation, extract_file_media, deliver_file_media
 from .member_runtime import wire_member
 from .setup import _pairing_in_use
 
 
-class HemingTeamAdapter(BasePlatformAdapter):
+class HemingTeamAdapter(HemingReplyPresentation, BasePlatformAdapter):
     REQUIRES_EDIT_FINALIZE = True
     MAX_MESSAGE_LENGTH = 16_384
 
@@ -110,6 +110,13 @@ class HemingTeamAdapter(BasePlatformAdapter):
         if not member:
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
         return await member.edit_message(chat_id, message_id, content, finalize=finalize, metadata=metadata)
+
+    async def send_stream_frame(self, content, *, chat_id, reply_to=None, turn_id=None, finalize=False):
+        member = self._recipient(chat_id)
+        if not member:
+            return False
+        return await member.send_stream_frame(content, chat_id=chat_id, reply_to=reply_to,
+                                              turn_id=turn_id, finalize=finalize)
 
     async def send_document(self, chat_id, file_path, caption=None, file_name=None,
                             reply_to=None, metadata=None, **kwargs):

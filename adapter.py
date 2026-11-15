@@ -20,7 +20,7 @@ from .work import WorkCards
 from .managed_tasks import ManagedTasks
 
 
-def extract_file_media(content):
+def extract_file_media(content, *, preview=False):
     """Keep native masking, and accept explicit standalone local files of any suffix."""
     native = getattr(BasePlatformAdapter, "extract_media", None)
     media, cleaned = native(content) if native else ([], content)
@@ -35,6 +35,8 @@ def extract_file_media(content):
                 fence = None
             lines.append(line)
             continue
+        if preview and fence is None and re.match(r"^ {0,3}MEDIA:", line):
+            continue  # A partially generated host path is not user-visible text.
         match = None if fence else re.fullmatch(
             r''' {0,3}MEDIA:[ \t]*(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s]+))[ \t]*''', line.rstrip("\r\n"))
         if match:
@@ -57,7 +59,29 @@ async def deliver_file_media(adapter, event, media_files, local_files, *, metada
             await adapter._notify_media_delivery_failure(event.source.chat_id, path, metadata=metadata)
 
 
-class HemingAdapter(BasePlatformAdapter):
+class HemingReplyPresentation:
+    # Use Hermes' typed presentation hooks, never a language/keyword blacklist.
+    SUPPORTS_NATIVE_STREAMING = True
+
+    def supports_native_streaming(self, chat_type=None, metadata=None):
+        return chat_type in (None, "", "dm", "private")
+
+    def streaming_overflow_limit(self):
+        # The connector splits the final into 16K wire messages. Keep the native
+        # consumer from sealing/discarding heads before the 128K request limit.
+        return 131_200
+
+    def format_tool_event(self, event, **options):
+        return None
+
+    def render_message_event(self, event, sink):
+        from gateway.stream_events import Commentary
+        if isinstance(event, Commentary):
+            return
+        return super().render_message_event(event, sink)
+
+
+class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
     REQUIRES_EDIT_FINALIZE = True
     MAX_MESSAGE_LENGTH = 16_384
 
@@ -75,6 +99,7 @@ class HemingAdapter(BasePlatformAdapter):
         self._session = None
         self._request = None
         self._parts = {}
+        self._stream_turn = None
         self._suppressed_parts = set()
         self._sends = {}
         self._file_deliveries = {}
@@ -100,6 +125,7 @@ class HemingAdapter(BasePlatformAdapter):
 
     def _clear_request(self):
         self._request, self._parts = None, {}
+        self._stream_turn = None
         self._suppressed_parts.clear()
         self._request_event = None
         self._work.records.clear()
@@ -250,6 +276,10 @@ class HemingAdapter(BasePlatformAdapter):
             return SendResult(success=True, message_id=message_id)
         if self._request:
             message_id = str(uuid.uuid4())
+            if self._stream_turn:
+                # The runner can reconcile transformed final text with send().
+                # Replace the live frame, not append another copy/preamble.
+                self._parts.clear()
             self._parts[message_id] = content
             return SendResult(success=True, message_id=message_id)
         try:
@@ -261,6 +291,21 @@ class HemingAdapter(BasePlatformAdapter):
     async def _snapshot(self):
         await self._write({"type": "snapshot", "requestId": self._request["requestId"],
             "text": "\n\n".join(self._parts.values())})
+
+    async def send_stream_frame(self, content, *, chat_id, reply_to=None, turn_id=None, finalize=False):
+        if (not self._session or not self._request or str(chat_id) != self._session["conversationId"]
+                or not turn_id or str(reply_to) != self._request["requestId"] or len(content) > 131_072):
+            return False
+        if self._stream_turn and self._stream_turn != turn_id:
+            return False
+        self._stream_turn = turn_id
+        # An empty seed is capability negotiation, not an empty chat message.
+        if not content and not finalize:
+            return True
+        _, text = extract_file_media(content, preview=True)
+        self._parts = {"stream:" + str(turn_id): text}
+        await self._snapshot()
+        return True
 
     async def send_document(self, chat_id, file_path, caption=None, file_name=None,
                             reply_to=None, metadata=None, **kwargs):
@@ -385,7 +430,7 @@ def register(ctx):
         env_enablement_fn=environment_defaults,
         required_env=[], max_message_length=16_384,
         allowed_users_env="HEMING_ALLOWED_USERS", allow_all_env="HEMING_ALLOW_ALL_USERS",
-        platform_hint="和鸣支持文字和通用文件回传，不限定文件后缀，不负责打开、预览、解析或转换文件。需要发送文件时先生成本地文件，然后在单独一行输出 MEDIA:绝对路径；路径含空格时用引号包住路径。不要只回复服务器路径、Markdown 链接或代码块。文件保持原样作为普通附件发送。")
+        platform_hint="和鸣默认在聊天中直接答复，普通提问、调研或总结不默认生成附件。只有当前用户明确要求文件，或明确继续一项尚未完成的文件交付时，才生成并回传文件；先前已完成的文件测试、旧会话摘要中的格式要求不属于本次的通用偏好，不得自动套用或额外生成多个格式。和鸣支持文字和通用文件回传，不限定文件后缀，不负责打开、预览、解析或转换文件。需要发送文件时先生成本地文件，然后在单独一行输出 MEDIA:绝对路径；路径含空格时用引号包住路径。不要只回复服务器路径、Markdown 链接或代码块。文件保持原样作为普通附件发送。")
     try:
         from gateway.platform_registry import PlatformEntry
         if "display_tier" in {field.name for field in dataclasses.fields(PlatformEntry)}:
