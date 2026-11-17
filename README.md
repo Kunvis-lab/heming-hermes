@@ -1,6 +1,10 @@
 # 和鸣 · Hermes 渠道插件
 
-**当前插件版本：0.1.7。** 配套和鸣 Android **4.3.0**、Windows **1.1 Beta**：支持指定好友邀请、正式答复流式输出和同次提问内的追问／补充；不把工具进度、临时旁白或内部草稿作为答复。普通调研默认在聊天中回答，只有本次明确要求文件或继续未完成的文件任务时才生成附件。已有连接更新后重启同一 profile 的 Gateway，无需重新扫码，不更换身份、模型、工具权限或其他渠道配置。旧 Hermes 若未启用流式展示，还需合并下方和鸣专用设置。
+**当前插件版本：0.1.8。** 修复 Hermes 0.23.2 中消息接入即失败的问题，保留正式正文流式、原请求追问和停止能力。已有用户更新插件后，重启同一 profile 的 Gateway 即可；不需要升级和鸣 App 或重新扫码。
+
+配套和鸣 Android **4.3.0**、Windows **1.1 Beta**：支持指定好友邀请、正式答复流式输出和同次提问内的追问／补充；不把工具进度、临时旁白或内部草稿作为答复。普通调研默认在聊天中回答，只有本次明确要求文件或继续未完成的文件任务时才生成附件。已有连接更新后重启同一 profile 的 Gateway，无需重新扫码，不更换身份、模型、工具权限或其他渠道配置。旧 Hermes 若未启用流式展示，还需合并下方和鸣专用设置。
+
+0.23.2 的来源证明与标准化身份由已登记的团队连接生成；每名成员仍独立验证会话及配对身份，隔离回复缓冲、追问和停止状态。不绕过原生准入、授权或持久队列。新增真实 GatewayRunner 与 SessionAuthority 的离线接入回归；仅连接器管道和模型边界使用合成数据，不将加载测试当作消息接入验收。
 
 通过二维码将自己的 Hermes 智能体连接到和鸣。模型和工具沿用 Hermes 原有设置；和鸣只负责个人专属会话，不要求填写平台 Token、Webhook 或流式输出选项。
 
@@ -10,11 +14,19 @@
 
 ## 安装
 
-需要已有可用的 Hermes、Git，以及 PATH 中的 Node.js 24 或更新版本。Hermes 平台插件接口以官方 v0.22.2 验证；不承诺兼容任意旧版本。
+需要已有可用的 Hermes、Git，以及 PATH 中的 Node.js 24 或更新版本。Hermes 平台插件接口已在官方 v0.22.2、v0.23.2 隔离运行时验证；不承诺兼容任意旧版本。0.23.2 的原生准入、流式、追问与停止还经过真实持久队列及隔离加密链路验证，不使用真实用户作测试账号。
 
 ```bash
 hermes plugins install Kunvis-lab/heming-hermes --no-enable && hermes plugins enable heming
 ```
+
+Gitee 镜像新安装可使用完整 URL：
+
+```bash
+hermes plugins install https://gitee.com/kunvis-lab/heming-hermes.git --no-enable && hermes plugins enable heming
+```
+
+已有安装的 `hermes plugins update heming` 跟随原先记录的来源；两个仓库同步不会自动迁移来源。
 
 Hermes 可能要求确认第三方插件安全检查，请阅读提示后决定是否继续。不要跳过安全检查。安装包已包含连接器依赖，不需要运行 npm install。
 

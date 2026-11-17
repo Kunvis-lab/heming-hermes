@@ -15,11 +15,15 @@ RUNNER_SETTINGS = (
     "_busy_text_mode", "_busy_text_debounce_seconds", "_busy_text_hard_cap_seconds",
     "_human_delay_range_ms", "_auto_tts_default", "gateway_runner",
 )
+# Hermes 0.23 pins both source provenance and canonical transport identity.
+# Only the registered team transport can own these. Child reply/approval state
+# remains private; delegating identity never grants a member another owner.
+TRANSPORT_IDENTITY = ("build_source", "_canonicalize")
 
 
 def wire_member(router, member):
     # Called before connect and on registry refresh; reflects runner reconfiguration
     # without ever approving an unknown user or manufacturing an internal event.
-    for name in SESSION_INDEXES + RUNNER_SETTINGS:
+    for name in SESSION_INDEXES + RUNNER_SETTINGS + TRANSPORT_IDENTITY:
         if hasattr(router, name):
             setattr(member, name, getattr(router, name))
