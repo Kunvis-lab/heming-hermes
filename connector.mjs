@@ -1313,11 +1313,11 @@ var require_dijkstra = __commonJS({
         var predecessors = {};
         var costs = {};
         costs[s] = 0;
-        var open2 = dijkstra.PriorityQueue.make();
-        open2.push(s, 0);
+        var open3 = dijkstra.PriorityQueue.make();
+        open3.push(s, 0);
         var closest, u, v, cost_of_s_to_u, adjacent_nodes, cost_of_e, cost_of_s_to_u_plus_cost_of_e, cost_of_s_to_v, first_visit;
-        while (!open2.empty()) {
-          closest = open2.pop();
+        while (!open3.empty()) {
+          closest = open3.pop();
           u = closest.value;
           cost_of_s_to_u = closest.cost;
           adjacent_nodes = graph[u] || {};
@@ -1329,7 +1329,7 @@ var require_dijkstra = __commonJS({
               first_visit = typeof costs[v] === "undefined";
               if (first_visit || cost_of_s_to_v > cost_of_s_to_u_plus_cost_of_e) {
                 costs[v] = cost_of_s_to_u_plus_cost_of_e;
-                open2.push(v, cost_of_s_to_u_plus_cost_of_e);
+                open3.push(v, cost_of_s_to_u_plus_cost_of_e);
                 predecessors[v] = u;
               }
             }
@@ -2339,7 +2339,7 @@ var require_crc = __commonJS({
 var require_parser = __commonJS({
   "apps/mobile/node_modules/pngjs/lib/parser.js"(exports, module) {
     "use strict";
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     var CrcCalculator = require_crc();
     var Parser = module.exports = function(options, dependencies) {
       this._options = options;
@@ -2350,12 +2350,12 @@ var require_parser = __commonJS({
       this._palette = [];
       this._colorType = 0;
       this._chunks = {};
-      this._chunks[constants2.TYPE_IHDR] = this._handleIHDR.bind(this);
-      this._chunks[constants2.TYPE_IEND] = this._handleIEND.bind(this);
-      this._chunks[constants2.TYPE_IDAT] = this._handleIDAT.bind(this);
-      this._chunks[constants2.TYPE_PLTE] = this._handlePLTE.bind(this);
-      this._chunks[constants2.TYPE_tRNS] = this._handleTRNS.bind(this);
-      this._chunks[constants2.TYPE_gAMA] = this._handleGAMA.bind(this);
+      this._chunks[constants3.TYPE_IHDR] = this._handleIHDR.bind(this);
+      this._chunks[constants3.TYPE_IEND] = this._handleIEND.bind(this);
+      this._chunks[constants3.TYPE_IDAT] = this._handleIDAT.bind(this);
+      this._chunks[constants3.TYPE_PLTE] = this._handlePLTE.bind(this);
+      this._chunks[constants3.TYPE_tRNS] = this._handleTRNS.bind(this);
+      this._chunks[constants3.TYPE_gAMA] = this._handleGAMA.bind(this);
       this.read = dependencies.read;
       this.error = dependencies.error;
       this.metadata = dependencies.metadata;
@@ -2370,10 +2370,10 @@ var require_parser = __commonJS({
       };
     };
     Parser.prototype.start = function() {
-      this.read(constants2.PNG_SIGNATURE.length, this._parseSignature.bind(this));
+      this.read(constants3.PNG_SIGNATURE.length, this._parseSignature.bind(this));
     };
     Parser.prototype._parseSignature = function(data) {
-      let signature = constants2.PNG_SIGNATURE;
+      let signature = constants3.PNG_SIGNATURE;
       for (let i = 0; i < signature.length; i++) {
         if (data[i] !== signature[i]) {
           this.error(new Error("Invalid file signature"));
@@ -2390,7 +2390,7 @@ var require_parser = __commonJS({
         name += String.fromCharCode(data[i]);
       }
       let ancillary = Boolean(data[4] & 32);
-      if (!this._hasIHDR && type !== constants2.TYPE_IHDR) {
+      if (!this._hasIHDR && type !== constants3.TYPE_IHDR) {
         this.error(new Error("Expected IHDR on beggining"));
         return;
       }
@@ -2438,7 +2438,7 @@ var require_parser = __commonJS({
         this.error(new Error("Unsupported bit depth " + depth));
         return;
       }
-      if (!(colorType in constants2.COLORTYPE_TO_BPP_MAP)) {
+      if (!(colorType in constants3.COLORTYPE_TO_BPP_MAP)) {
         this.error(new Error("Unsupported color type"));
         return;
       }
@@ -2455,16 +2455,16 @@ var require_parser = __commonJS({
         return;
       }
       this._colorType = colorType;
-      let bpp = constants2.COLORTYPE_TO_BPP_MAP[this._colorType];
+      let bpp = constants3.COLORTYPE_TO_BPP_MAP[this._colorType];
       this._hasIHDR = true;
       this.metadata({
         width,
         height,
         depth,
         interlace: Boolean(interlace),
-        palette: Boolean(colorType & constants2.COLORTYPE_PALETTE),
-        color: Boolean(colorType & constants2.COLORTYPE_COLOR),
-        alpha: Boolean(colorType & constants2.COLORTYPE_ALPHA),
+        palette: Boolean(colorType & constants3.COLORTYPE_PALETTE),
+        color: Boolean(colorType & constants3.COLORTYPE_COLOR),
+        alpha: Boolean(colorType & constants3.COLORTYPE_ALPHA),
         bpp,
         colorType
       });
@@ -2488,7 +2488,7 @@ var require_parser = __commonJS({
     };
     Parser.prototype._parseTRNS = function(data) {
       this._crc.write(data);
-      if (this._colorType === constants2.COLORTYPE_PALETTE_COLOR) {
+      if (this._colorType === constants3.COLORTYPE_PALETTE_COLOR) {
         if (this._palette.length === 0) {
           this.error(new Error("Transparency chunk must be after palette"));
           return;
@@ -2502,10 +2502,10 @@ var require_parser = __commonJS({
         }
         this.palette(this._palette);
       }
-      if (this._colorType === constants2.COLORTYPE_GRAYSCALE) {
+      if (this._colorType === constants3.COLORTYPE_GRAYSCALE) {
         this.transColor([data.readUInt16BE(0)]);
       }
-      if (this._colorType === constants2.COLORTYPE_COLOR) {
+      if (this._colorType === constants3.COLORTYPE_COLOR) {
         this.transColor([
           data.readUInt16BE(0),
           data.readUInt16BE(2),
@@ -2519,7 +2519,7 @@ var require_parser = __commonJS({
     };
     Parser.prototype._parseGAMA = function(data) {
       this._crc.write(data);
-      this.gamma(data.readUInt32BE(0) / constants2.GAMMA_DIVISION);
+      this.gamma(data.readUInt32BE(0) / constants3.GAMMA_DIVISION);
       this._handleChunkEnd();
     };
     Parser.prototype._handleIDAT = function(length) {
@@ -2531,7 +2531,7 @@ var require_parser = __commonJS({
     };
     Parser.prototype._parseIDAT = function(length, data) {
       this._crc.write(data);
-      if (this._colorType === constants2.COLORTYPE_PALETTE_COLOR && this._palette.length === 0) {
+      if (this._colorType === constants3.COLORTYPE_PALETTE_COLOR && this._palette.length === 0) {
         throw new Error("Expected palette not found");
       }
       this.inflateData(data);
@@ -3015,9 +3015,9 @@ var require_parser_async = __commonJS({
 var require_bitpacker = __commonJS({
   "apps/mobile/node_modules/pngjs/lib/bitpacker.js"(exports, module) {
     "use strict";
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     module.exports = function(dataIn, width, height, options) {
-      let outHasAlpha = [constants2.COLORTYPE_COLOR_ALPHA, constants2.COLORTYPE_ALPHA].indexOf(
+      let outHasAlpha = [constants3.COLORTYPE_COLOR_ALPHA, constants3.COLORTYPE_ALPHA].indexOf(
         options.colorType
       ) !== -1;
       if (options.colorType === options.inputColorType) {
@@ -3037,11 +3037,11 @@ var require_bitpacker = __commonJS({
       }
       let data = options.bitDepth !== 16 ? dataIn : new Uint16Array(dataIn.buffer);
       let maxValue = 255;
-      let inBpp = constants2.COLORTYPE_TO_BPP_MAP[options.inputColorType];
+      let inBpp = constants3.COLORTYPE_TO_BPP_MAP[options.inputColorType];
       if (inBpp === 4 && !options.inputHasAlpha) {
         inBpp = 3;
       }
-      let outBpp = constants2.COLORTYPE_TO_BPP_MAP[options.colorType];
+      let outBpp = constants3.COLORTYPE_TO_BPP_MAP[options.colorType];
       if (options.bitDepth === 16) {
         maxValue = 65535;
         outBpp *= 2;
@@ -3065,24 +3065,24 @@ var require_bitpacker = __commonJS({
         let blue;
         let alpha = maxValue;
         switch (options.inputColorType) {
-          case constants2.COLORTYPE_COLOR_ALPHA:
+          case constants3.COLORTYPE_COLOR_ALPHA:
             alpha = data[inIndex + 3];
             red = data[inIndex];
             green = data[inIndex + 1];
             blue = data[inIndex + 2];
             break;
-          case constants2.COLORTYPE_COLOR:
+          case constants3.COLORTYPE_COLOR:
             red = data[inIndex];
             green = data[inIndex + 1];
             blue = data[inIndex + 2];
             break;
-          case constants2.COLORTYPE_ALPHA:
+          case constants3.COLORTYPE_ALPHA:
             alpha = data[inIndex + 1];
             red = data[inIndex];
             green = red;
             blue = red;
             break;
-          case constants2.COLORTYPE_GRAYSCALE:
+          case constants3.COLORTYPE_GRAYSCALE:
             red = data[inIndex];
             green = red;
             blue = red;
@@ -3115,8 +3115,8 @@ var require_bitpacker = __commonJS({
         for (let x = 0; x < width; x++) {
           let rgba = getRGBA(data, inIndex);
           switch (options.colorType) {
-            case constants2.COLORTYPE_COLOR_ALPHA:
-            case constants2.COLORTYPE_COLOR:
+            case constants3.COLORTYPE_COLOR_ALPHA:
+            case constants3.COLORTYPE_COLOR:
               if (options.bitDepth === 8) {
                 outData[outIndex] = rgba.red;
                 outData[outIndex + 1] = rgba.green;
@@ -3133,8 +3133,8 @@ var require_bitpacker = __commonJS({
                 }
               }
               break;
-            case constants2.COLORTYPE_ALPHA:
-            case constants2.COLORTYPE_GRAYSCALE: {
+            case constants3.COLORTYPE_ALPHA:
+            case constants3.COLORTYPE_GRAYSCALE: {
               let grayscale = (rgba.red + rgba.green + rgba.blue) / 3;
               if (options.bitDepth === 8) {
                 outData[outIndex] = grayscale;
@@ -3307,7 +3307,7 @@ var require_filter_pack = __commonJS({
 var require_packer = __commonJS({
   "apps/mobile/node_modules/pngjs/lib/packer.js"(exports, module) {
     "use strict";
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     var CrcStream = require_crc();
     var bitPacker = require_bitpacker();
     var filter = require_filter_pack();
@@ -3320,23 +3320,23 @@ var require_packer = __commonJS({
       options.inputHasAlpha = options.inputHasAlpha != null ? options.inputHasAlpha : true;
       options.deflateFactory = options.deflateFactory || zlib.createDeflate;
       options.bitDepth = options.bitDepth || 8;
-      options.colorType = typeof options.colorType === "number" ? options.colorType : constants2.COLORTYPE_COLOR_ALPHA;
-      options.inputColorType = typeof options.inputColorType === "number" ? options.inputColorType : constants2.COLORTYPE_COLOR_ALPHA;
+      options.colorType = typeof options.colorType === "number" ? options.colorType : constants3.COLORTYPE_COLOR_ALPHA;
+      options.inputColorType = typeof options.inputColorType === "number" ? options.inputColorType : constants3.COLORTYPE_COLOR_ALPHA;
       if ([
-        constants2.COLORTYPE_GRAYSCALE,
-        constants2.COLORTYPE_COLOR,
-        constants2.COLORTYPE_COLOR_ALPHA,
-        constants2.COLORTYPE_ALPHA
+        constants3.COLORTYPE_GRAYSCALE,
+        constants3.COLORTYPE_COLOR,
+        constants3.COLORTYPE_COLOR_ALPHA,
+        constants3.COLORTYPE_ALPHA
       ].indexOf(options.colorType) === -1) {
         throw new Error(
           "option color type:" + options.colorType + " is not supported at present"
         );
       }
       if ([
-        constants2.COLORTYPE_GRAYSCALE,
-        constants2.COLORTYPE_COLOR,
-        constants2.COLORTYPE_COLOR_ALPHA,
-        constants2.COLORTYPE_ALPHA
+        constants3.COLORTYPE_GRAYSCALE,
+        constants3.COLORTYPE_COLOR,
+        constants3.COLORTYPE_COLOR_ALPHA,
+        constants3.COLORTYPE_ALPHA
       ].indexOf(options.inputColorType) === -1) {
         throw new Error(
           "option input color type:" + options.inputColorType + " is not supported at present"
@@ -3360,7 +3360,7 @@ var require_packer = __commonJS({
     };
     Packer.prototype.filterData = function(data, width, height) {
       let packedData = bitPacker(data, width, height, this._options);
-      let bpp = constants2.COLORTYPE_TO_BPP_MAP[this._options.colorType];
+      let bpp = constants3.COLORTYPE_TO_BPP_MAP[this._options.colorType];
       let filteredData = filter(packedData, width, height, this._options, bpp);
       return filteredData;
     };
@@ -3380,8 +3380,8 @@ var require_packer = __commonJS({
     };
     Packer.prototype.packGAMA = function(gamma) {
       let buf = Buffer.alloc(4);
-      buf.writeUInt32BE(Math.floor(gamma * constants2.GAMMA_DIVISION), 0);
-      return this._packChunk(constants2.TYPE_gAMA, buf);
+      buf.writeUInt32BE(Math.floor(gamma * constants3.GAMMA_DIVISION), 0);
+      return this._packChunk(constants3.TYPE_gAMA, buf);
     };
     Packer.prototype.packIHDR = function(width, height) {
       let buf = Buffer.alloc(13);
@@ -3392,13 +3392,13 @@ var require_packer = __commonJS({
       buf[10] = 0;
       buf[11] = 0;
       buf[12] = 0;
-      return this._packChunk(constants2.TYPE_IHDR, buf);
+      return this._packChunk(constants3.TYPE_IHDR, buf);
     };
     Packer.prototype.packIDAT = function(data) {
-      return this._packChunk(constants2.TYPE_IDAT, data);
+      return this._packChunk(constants3.TYPE_IDAT, data);
     };
     Packer.prototype.packIEND = function() {
-      return this._packChunk(constants2.TYPE_IEND, null);
+      return this._packChunk(constants3.TYPE_IEND, null);
     };
   }
 });
@@ -3409,7 +3409,7 @@ var require_packer_async = __commonJS({
     "use strict";
     var util = __require("util");
     var Stream = __require("stream");
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     var Packer = require_packer();
     var PackerAsync = module.exports = function(opt) {
       Stream.call(this);
@@ -3420,7 +3420,7 @@ var require_packer_async = __commonJS({
     };
     util.inherits(PackerAsync, Stream);
     PackerAsync.prototype.pack = function(data, width, height, gamma) {
-      this.emit("data", Buffer.from(constants2.PNG_SIGNATURE));
+      this.emit("data", Buffer.from(constants3.PNG_SIGNATURE));
       this.emit("data", this._packer.packIHDR(width, height));
       if (gamma) {
         this.emit("data", this._packer.packGAMA(gamma));
@@ -3744,7 +3744,7 @@ var require_packer_sync = __commonJS({
     if (!zlib.deflateSync) {
       hasSyncZlib = false;
     }
-    var constants2 = require_constants();
+    var constants3 = require_constants();
     var Packer = require_packer();
     module.exports = function(metaData, opt) {
       if (!hasSyncZlib) {
@@ -3755,7 +3755,7 @@ var require_packer_sync = __commonJS({
       let options = opt || {};
       let packer = new Packer(options);
       let chunks = [];
-      chunks.push(Buffer.from(constants2.PNG_SIGNATURE));
+      chunks.push(Buffer.from(constants3.PNG_SIGNATURE));
       chunks.push(packer.packIHDR(metaData.width, metaData.height));
       if (metaData.gamma) {
         chunks.push(packer.packGAMA(metaData.gamma));
@@ -7641,6 +7641,195 @@ function normalizeAgentManagedTasks(value) {
   return result;
 }
 
+// shared/attachmentCrypto.mjs
+var encoder2 = new TextEncoder();
+var MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+var DEFAULT_ATTACHMENT_CHUNK_BYTES = 1024 * 1024;
+function toBase642(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
+  return btoa(binary);
+}
+function fromBase642(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+async function sha256Hex(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function chunkNonce(prefix, index) {
+  const nonce = new Uint8Array(12);
+  nonce.set(prefix, 0);
+  new DataView(nonce.buffer).setUint32(8, index, false);
+  return nonce;
+}
+function chunkAad(metadata, index, plainBytes) {
+  return encoder2.encode(
+    JSON.stringify({
+      algorithm: metadata.algorithm,
+      index,
+      plainBytes,
+      version: metadata.version
+    })
+  );
+}
+async function createAttachmentChunkEncryption(plainBytes, chunkBytes = DEFAULT_ATTACHMENT_CHUNK_BYTES) {
+  if (!Number.isInteger(plainBytes) || plainBytes < 1)
+    throw new Error("ATTACHMENT_EMPTY");
+  if (plainBytes > MAX_ATTACHMENT_BYTES)
+    throw new Error("ATTACHMENT_TOO_LARGE");
+  if (!Number.isInteger(chunkBytes) || chunkBytes < 256 * 1024 || chunkBytes > 4 * 1024 * 1024)
+    throw new Error("ATTACHMENT_CHUNK_SIZE_INVALID");
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+  const rawKey = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  return {
+    version: 2,
+    algorithm: "AES-256-GCM-CHUNKED",
+    key: toBase642(rawKey),
+    noncePrefix: toBase642(crypto.getRandomValues(new Uint8Array(8))),
+    plainBytes,
+    chunkBytes,
+    chunkCount: Math.ceil(plainBytes / chunkBytes)
+  };
+}
+async function encryptAttachmentChunk(metadata, index, value) {
+  if (metadata?.version !== 2 || metadata.algorithm !== "AES-256-GCM-CHUNKED" || !Number.isInteger(index) || index < 0 || index >= metadata.chunkCount)
+    throw new Error("INVALID_ATTACHMENT_CHUNK_METADATA");
+  const plain = value instanceof Uint8Array ? value : new Uint8Array(value);
+  const expected = index === metadata.chunkCount - 1 ? metadata.plainBytes - index * metadata.chunkBytes : metadata.chunkBytes;
+  if (plain.byteLength !== expected)
+    throw new Error("ATTACHMENT_CHUNK_SIZE_MISMATCH");
+  const rawKey = fromBase642(metadata.key);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"]
+  );
+  const nonce = chunkNonce(fromBase642(metadata.noncePrefix), index);
+  const cipherBytes = new Uint8Array(
+    await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: nonce,
+        additionalData: chunkAad(metadata, index, plain.byteLength),
+        tagLength: 128
+      },
+      key,
+      plain
+    )
+  );
+  rawKey.fill(0);
+  return {
+    cipherBytes,
+    descriptor: {
+      index,
+      plainBytes: plain.byteLength,
+      cipherBytes: cipherBytes.byteLength,
+      digest: await sha256Hex(cipherBytes)
+    }
+  };
+}
+async function completeAttachmentChunkMetadata(metadata, chunks) {
+  if (metadata?.version !== 2 || !Array.isArray(chunks) || chunks.length !== metadata.chunkCount)
+    throw new Error("ATTACHMENT_CHUNKS_INCOMPLETE");
+  const normalized = [...chunks].sort((left, right) => left.index - right.index);
+  for (let index = 0; index < normalized.length; index += 1) {
+    const chunk = normalized[index];
+    if (chunk.index !== index || !Number.isInteger(chunk.plainBytes) || !Number.isInteger(chunk.cipherBytes) || !/^[a-f0-9]{64}$/.test(chunk.digest))
+      throw new Error("ATTACHMENT_CHUNKS_INCOMPLETE");
+  }
+  const digest = await sha256Hex(
+    encoder2.encode(normalized.map((chunk) => chunk.digest).join("\n"))
+  );
+  return {
+    ...metadata,
+    cipherBytes: normalized.reduce((sum, chunk) => sum + chunk.cipherBytes, 0),
+    digest,
+    chunks: normalized
+  };
+}
+async function decryptAttachmentChunk(cipherValue, metadata, descriptor) {
+  const cipherBytes = cipherValue instanceof Uint8Array ? cipherValue : new Uint8Array(cipherValue);
+  if (metadata?.version !== 2 || metadata.algorithm !== "AES-256-GCM-CHUNKED" || !descriptor || cipherBytes.byteLength !== descriptor.cipherBytes || await sha256Hex(cipherBytes) !== descriptor.digest)
+    throw new Error("ATTACHMENT_INTEGRITY_FAILED");
+  const rawKey = fromBase642(metadata.key);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+  try {
+    const plain = new Uint8Array(
+      await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: chunkNonce(fromBase642(metadata.noncePrefix), descriptor.index),
+          additionalData: chunkAad(
+            metadata,
+            descriptor.index,
+            descriptor.plainBytes
+          ),
+          tagLength: 128
+        },
+        key,
+        cipherBytes
+      )
+    );
+    if (plain.byteLength !== descriptor.plainBytes)
+      throw new Error("ATTACHMENT_INTEGRITY_FAILED");
+    return plain;
+  } catch (error) {
+    if (error?.message === "ATTACHMENT_INTEGRITY_FAILED") throw error;
+    throw new Error("ATTACHMENT_DECRYPTION_FAILED");
+  } finally {
+    rawKey.fill(0);
+  }
+}
+function attachmentAad(metadata) {
+  return encoder2.encode(JSON.stringify({ algorithm: metadata.algorithm, nonce: metadata.nonce, version: metadata.version }));
+}
+async function decryptAttachmentBytes(cipherValue, metadata) {
+  const cipherBytes = cipherValue instanceof Uint8Array ? cipherValue : new Uint8Array(cipherValue);
+  if (metadata?.version !== 1 || metadata.algorithm !== "AES-256-GCM" || typeof metadata.key !== "string" || typeof metadata.nonce !== "string" || typeof metadata.digest !== "string") throw new Error("INVALID_ATTACHMENT_METADATA");
+  if (cipherBytes.byteLength !== metadata.cipherBytes || await sha256Hex(cipherBytes) !== metadata.digest.toLowerCase()) throw new Error("ATTACHMENT_INTEGRITY_FAILED");
+  const rawKey = fromBase642(metadata.key);
+  const key = await crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
+  try {
+    const plain = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromBase642(metadata.nonce), additionalData: attachmentAad(metadata), tagLength: 128 }, key, cipherBytes));
+    if (plain.byteLength !== metadata.plainBytes) throw new Error("ATTACHMENT_INTEGRITY_FAILED");
+    return plain;
+  } catch (error) {
+    if (error.message === "ATTACHMENT_INTEGRITY_FAILED") throw error;
+    throw new Error("ATTACHMENT_DECRYPTION_FAILED");
+  } finally {
+    rawKey.fill(0);
+  }
+}
+
+// shared/agentInput.mjs
+function normalizeAgentInput(value) {
+  if (!value || value.version !== 1 || typeof value.instruction !== "string" || !value.instruction.trim() || value.instruction.length > 16384)
+    throw Error("INVALID_AGENT_INPUT");
+  return {
+    version: 1,
+    instruction: value.instruction,
+    ...value.document !== void 0 ? { document: normalizeAgentDocument(value.document) } : {}
+  };
+}
+function requireAgentInputAttachments(attachments) {
+  if (!Array.isArray(attachments) || !attachments.length || attachments.length > MAX_ATTACHMENTS_PER_MESSAGE || new Set(attachments.map((item) => String(item.id))).size !== attachments.length || attachments.reduce((total, item) => total + Number(item.plainBytes), 0) > MAX_ATTACHMENT_BYTES)
+    throw Error("INVALID_AGENT_INPUT_ATTACHMENTS");
+}
+
 // shared/groupHandoverContext.mjs
 function normalizeHandoverContext(value, topic, { id: id2, text: text4, identities: identities2, documentSnapshot: documentSnapshot2 }, normalizeOutcome) {
   if (value == null) return void 0;
@@ -8149,6 +8338,14 @@ function validateData(type, value) {
     if (data.whisper === true) data.whisper = true;
     else delete data.whisper;
     if (data.agentReply) data.agentReply = normalizeAgentReply(data.agentReply);
+    if (data.agentInput) {
+      if (data.contentType !== "file" || data.agentWork || data.agentDocument || data.agentReply || data.agentInteraction || data.libraryDocument || data.handoverReference || data.forwardedFrom || data.whisper || data.ephemeral)
+        throw Error("INVALID_AGENT_INPUT_MESSAGE");
+      data.agentInput = normalizeAgentInput(data.agentInput);
+      if (value.text !== data.agentInput.instruction) throw Error("AGENT_INPUT_INSTRUCTION_MISMATCH");
+      requireAgentInputAttachments(data.attachments);
+      data.text = data.agentInput.instruction;
+    }
     if (data.agentWork || data.agentDocument) {
       if (data.contentType !== "text" || data.forwardedFrom || data.whisper || data.ephemeral || data.agentReply || data.agentInteraction || data.libraryDocument || data.agentWork && data.agentDocument)
         throw Error("INVALID_AGENT_WORK_MESSAGE");
@@ -8563,24 +8760,24 @@ async function verifySignedPrekey(target) {
 // shared/sessionRatchet.mjs
 var ALGORITHM = "CLEAR-SIGNAL-RATCHET-AES256GCM-V1";
 var MAX_SKIPPED_KEYS = 100;
-var encoder2 = new TextEncoder();
+var encoder3 = new TextEncoder();
 var decoder2 = new TextDecoder();
-function toBase642(bytes) {
+function toBase643(bytes) {
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 32768)
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   return btoa(binary);
 }
-function fromBase642(value) {
+function fromBase643(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 function toBase64Url2(bytes) {
-  return toBase642(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return toBase643(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 function fromBase64Url2(value) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
-  return fromBase642(value.replaceAll("-", "+").replaceAll("_", "/") + padding);
+  return fromBase643(value.replaceAll("-", "+").replaceAll("_", "/") + padding);
 }
 async function initialChainKey(sharedSecret, salt, sessionId) {
   const material = await crypto.subtle.importKey(
@@ -8596,7 +8793,7 @@ async function initialChainKey(sharedSecret, salt, sessionId) {
         name: "HKDF",
         hash: "SHA-256",
         salt,
-        info: encoder2.encode(`clear-signal-ratchet-root-v1
+        info: encoder3.encode(`clear-signal-ratchet-root-v1
 ${sessionId}`)
       },
       material,
@@ -8612,7 +8809,7 @@ async function hmac(keyBytes, value) {
     false,
     ["sign"]
   );
-  return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder2.encode(value)));
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder3.encode(value)));
 }
 async function deriveStep(chainKey, counter) {
   const [messageKey, nextChainKey] = await Promise.all([
@@ -8667,11 +8864,11 @@ async function createOutboundRatchetSession(recipientPublicJwk, metadata = {}) {
     version: 1,
     direction: "outbound",
     sessionId,
-    chainKey: toBase642(chainKey),
+    chainKey: toBase643(chainKey),
     nextCounter: 0,
     senderRatchetPrivateKey: toBase64Url2(pair.secretKey),
     senderRatchetPublicKey: publicJwk(pair.publicKey),
-    salt: toBase642(salt),
+    salt: toBase643(salt),
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     ...metadata
   };
@@ -8686,7 +8883,7 @@ async function createInboundRatchetSession(recipientPrivateJwk, header, metadata
   );
   const chainKey = await initialChainKey(
     sharedSecret,
-    fromBase642(header.salt),
+    fromBase643(header.salt),
     header.sessionId
   );
   sharedSecret.fill(0);
@@ -8694,7 +8891,7 @@ async function createInboundRatchetSession(recipientPrivateJwk, header, metadata
     version: 1,
     direction: "inbound",
     sessionId: header.sessionId,
-    chainKey: toBase642(chainKey),
+    chainKey: toBase643(chainKey),
     nextCounter: 0,
     senderRatchetPublicKey: header.senderRatchetPublicKey,
     salt: header.salt,
@@ -8708,7 +8905,7 @@ async function encryptRatchetEnvelope(state, payload) {
     throw new Error("INVALID_OUTBOUND_RATCHET_STATE");
   const counter = state.nextCounter;
   const { messageKey, nextChainKey } = await deriveStep(
-    fromBase642(state.chainKey),
+    fromBase643(state.chainKey),
     counter
   );
   const nonce = crypto.getRandomValues(new Uint8Array(12));
@@ -8719,7 +8916,7 @@ async function encryptRatchetEnvelope(state, payload) {
     counter,
     senderRatchetPublicKey: state.senderRatchetPublicKey,
     salt: state.salt,
-    nonce: toBase642(nonce)
+    nonce: toBase643(nonce)
   };
   const key = await crypto.subtle.importKey(
     "raw",
@@ -8728,12 +8925,12 @@ async function encryptRatchetEnvelope(state, payload) {
     false,
     ["encrypt"]
   );
-  const plain = encoder2.encode(JSON.stringify(payload));
+  const plain = encoder3.encode(JSON.stringify(payload));
   const cipher = await crypto.subtle.encrypt(
     {
       name: "AES-GCM",
       iv: nonce,
-      additionalData: encoder2.encode(canonicalHeader2(header)),
+      additionalData: encoder3.encode(canonicalHeader2(header)),
       tagLength: 128
     },
     key,
@@ -8744,11 +8941,11 @@ async function encryptRatchetEnvelope(state, payload) {
   return {
     encrypted: {
       cryptoHeader: header,
-      cipherText: toBase642(new Uint8Array(cipher))
+      cipherText: toBase643(new Uint8Array(cipher))
     },
     state: {
       ...state,
-      chainKey: toBase642(nextChainKey),
+      chainKey: toBase643(nextChainKey),
       nextCounter: counter + 1,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
     }
@@ -8759,13 +8956,13 @@ async function decryptRatchetEnvelope(state, cryptoHeader, cipherText) {
   if (state?.direction !== "inbound" || state.sessionId !== cryptoHeader.sessionId || state.senderRatchetPublicKey?.x !== cryptoHeader.senderRatchetPublicKey.x || state.salt !== cryptoHeader.salt)
     throw new Error("RATCHET_SESSION_MISMATCH");
   const counter = cryptoHeader.counter;
-  let chainKey = fromBase642(state.chainKey);
+  let chainKey = fromBase643(state.chainKey);
   let nextCounter = state.nextCounter;
   const skippedKeys = { ...state.skippedKeys || {} };
   let messageKey;
   if (counter < nextCounter) {
     if (!skippedKeys[counter]) throw new Error("RATCHET_MESSAGE_REPLAYED");
-    messageKey = fromBase642(skippedKeys[counter]);
+    messageKey = fromBase643(skippedKeys[counter]);
     delete skippedKeys[counter];
   } else {
     if (counter - nextCounter > MAX_SKIPPED_KEYS)
@@ -8775,7 +8972,7 @@ async function decryptRatchetEnvelope(state, cryptoHeader, cipherText) {
       chainKey.fill(0);
       chainKey = step.nextChainKey;
       if (nextCounter === counter) messageKey = step.messageKey;
-      else skippedKeys[nextCounter] = toBase642(step.messageKey);
+      else skippedKeys[nextCounter] = toBase643(step.messageKey);
       nextCounter += 1;
     }
   }
@@ -8789,12 +8986,12 @@ async function decryptRatchetEnvelope(state, cryptoHeader, cipherText) {
   const plain = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",
-      iv: fromBase642(cryptoHeader.nonce),
-      additionalData: encoder2.encode(canonicalHeader2(cryptoHeader)),
+      iv: fromBase643(cryptoHeader.nonce),
+      additionalData: encoder3.encode(canonicalHeader2(cryptoHeader)),
       tagLength: 128
     },
     key,
-    fromBase642(cipherText)
+    fromBase643(cipherText)
   );
   messageKey.fill(0);
   const retainedSkippedKeys = Object.fromEntries(
@@ -8804,7 +9001,7 @@ async function decryptRatchetEnvelope(state, cryptoHeader, cipherText) {
     payload: JSON.parse(decoder2.decode(plain)),
     state: {
       ...state,
-      chainKey: toBase642(chainKey),
+      chainKey: toBase643(chainKey),
       nextCounter,
       skippedKeys: retainedSkippedKeys,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -8818,20 +9015,20 @@ function isRatchetEnvelopeHeader(header) {
 // shared/identityBoundEnvelope.mjs
 var VERSION = 1;
 var ALGORITHM2 = "X25519-HKDF-SHA256-HMAC-SHA256";
-var encoder3 = new TextEncoder();
-function toBase643(bytes) {
+var encoder4 = new TextEncoder();
+function toBase644(bytes) {
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 32768)
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   return btoa(binary);
 }
-function fromBase643(value) {
+function fromBase644(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 function fromBase64Url3(value) {
   const padding = "=".repeat((4 - value.length % 4) % 4);
-  return fromBase643(value.replaceAll("-", "+").replaceAll("_", "/") + padding);
+  return fromBase644(value.replaceAll("-", "+").replaceAll("_", "/") + padding);
 }
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -8865,7 +9062,7 @@ async function bindingKey(privateJwk, publicJwk2, salt) {
       name: "HKDF",
       hash: "SHA-256",
       salt,
-      info: encoder3.encode("clear-signal-identity-envelope-binding-v1")
+      info: encoder4.encode("clear-signal-identity-envelope-binding-v1")
     },
     material,
     { name: "HMAC", hash: "SHA-256", length: 256 },
@@ -8876,7 +9073,7 @@ async function bindingKey(privateJwk, publicJwk2, salt) {
   return key;
 }
 function bindingMessage(encrypted, context, senderDeviceProofPublicKey) {
-  return encoder3.encode(
+  return encoder4.encode(
     JSON.stringify(
       canonicalize({
         cipherText: encrypted.cipherText,
@@ -8914,8 +9111,8 @@ async function bindEncryptedEnvelopeToIdentity({
       identityBinding: {
         version: VERSION,
         algorithm: ALGORITHM2,
-        salt: toBase643(salt),
-        tag: toBase643(new Uint8Array(tag))
+        salt: toBase644(salt),
+        tag: toBase644(new Uint8Array(tag))
       }
     }
   };
@@ -8936,12 +9133,12 @@ async function verifyEncryptedEnvelopeIdentityBinding({
     const key = await bindingKey(
       recipientIdentityPrivateKey,
       senderIdentityPublicKey,
-      fromBase643(binding.salt)
+      fromBase644(binding.salt)
     );
     const valid = await crypto.subtle.verify(
       "HMAC",
       key,
-      fromBase643(binding.tag),
+      fromBase644(binding.tag),
       bindingMessage(
         { cryptoHeader, cipherText },
         context,
@@ -8960,14 +9157,14 @@ async function verifyEncryptedEnvelopeIdentityBinding({
 var AUTH_VERSION = 1;
 var AUTH_ALGORITHM = "ECDSA-P256-SHA256";
 var AUTH_DOMAIN = "clear-signal-authenticated-envelope-v1";
-var encoder4 = new TextEncoder();
-function toBase644(bytes) {
+var encoder5 = new TextEncoder();
+function toBase645(bytes) {
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 32768)
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   return btoa(binary);
 }
-function fromBase644(value) {
+function fromBase645(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
@@ -8992,8 +9189,8 @@ function canonicalContext(value) {
   return context;
 }
 async function sha256Base64(value) {
-  return toBase644(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", encoder4.encode(value)))
+  return toBase645(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", encoder5.encode(value)))
   );
 }
 async function signingChallenge(cryptoHeader, cipherText, context, publicKey) {
@@ -9080,7 +9277,7 @@ async function verifyEncryptedEnvelopeAuthentication({
   try {
     const publicKey = await crypto.subtle.importKey(
       "spki",
-      fromBase644(authentication.senderDeviceProofPublicKey),
+      fromBase645(authentication.senderDeviceProofPublicKey),
       { name: "ECDSA", namedCurve: "P-256" },
       false,
       ["verify"]
@@ -9094,8 +9291,8 @@ async function verifyEncryptedEnvelopeAuthentication({
     const valid = await crypto.subtle.verify(
       { name: "ECDSA", hash: "SHA-256" },
       publicKey,
-      derToP13632(fromBase644(authentication.signature)),
-      encoder4.encode(challenge)
+      derToP13632(fromBase645(authentication.signature)),
+      encoder5.encode(challenge)
     );
     if (!valid) throw new Error("ENVELOPE_AUTH_SIGNATURE_INVALID");
   } catch (error) {
@@ -9112,12 +9309,12 @@ async function verifyEncryptedEnvelopeAuthentication({
 
 // shared/multiDeviceEnvelope.mjs
 var BUNDLE_ALGORITHM = "CLEAR-SIGNAL-MULTI-DEVICE-BUNDLE-V1";
-function toBase645(bytes) {
+function toBase646(bytes) {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
   return btoa(binary);
 }
-function fromBase645(value) {
+function fromBase646(value) {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
@@ -9129,13 +9326,13 @@ function packMultiDeviceEnvelopes(packets) {
   });
   return {
     cryptoHeader: { version: 2, algorithm: BUNDLE_ALGORITHM, deviceIds: normalized.map((packet) => packet.deviceId) },
-    cipherText: toBase645(new TextEncoder().encode(JSON.stringify({ version: 1, packets: normalized })))
+    cipherText: toBase646(new TextEncoder().encode(JSON.stringify({ version: 1, packets: normalized })))
   };
 }
 function unpackMultiDeviceEnvelope(cryptoHeader, cipherText, deviceId) {
   if (cryptoHeader?.algorithm !== BUNDLE_ALGORITHM) return { cryptoHeader, cipherText };
   if (cryptoHeader.version !== 2 || !Array.isArray(cryptoHeader.deviceIds) || !cryptoHeader.deviceIds.includes(deviceId)) throw new Error("DEVICE_ENVELOPE_NOT_FOUND");
-  const bundle = JSON.parse(new TextDecoder().decode(fromBase645(cipherText)));
+  const bundle = JSON.parse(new TextDecoder().decode(fromBase646(cipherText)));
   const packet = bundle?.version === 1 ? bundle.packets?.find((item) => item.deviceId === deviceId) : null;
   if (!packet?.cryptoHeader || typeof packet.cipherText !== "string") throw new Error("INVALID_DEVICE_ENVELOPE_BUNDLE");
   return { cryptoHeader: packet.cryptoHeader, cipherText: packet.cipherText };
@@ -9624,121 +9821,6 @@ import { open, realpath } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, isAbsolute, resolve as resolve2, sep } from "node:path";
 
-// shared/attachmentCrypto.mjs
-var encoder5 = new TextEncoder();
-var MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
-var DEFAULT_ATTACHMENT_CHUNK_BYTES = 1024 * 1024;
-function toBase646(bytes) {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
-  return btoa(binary);
-}
-function fromBase646(value) {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-async function sha256Hex(bytes) {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-function chunkNonce(prefix, index) {
-  const nonce = new Uint8Array(12);
-  nonce.set(prefix, 0);
-  new DataView(nonce.buffer).setUint32(8, index, false);
-  return nonce;
-}
-function chunkAad(metadata, index, plainBytes) {
-  return encoder5.encode(
-    JSON.stringify({
-      algorithm: metadata.algorithm,
-      index,
-      plainBytes,
-      version: metadata.version
-    })
-  );
-}
-async function createAttachmentChunkEncryption(plainBytes, chunkBytes = DEFAULT_ATTACHMENT_CHUNK_BYTES) {
-  if (!Number.isInteger(plainBytes) || plainBytes < 1)
-    throw new Error("ATTACHMENT_EMPTY");
-  if (plainBytes > MAX_ATTACHMENT_BYTES)
-    throw new Error("ATTACHMENT_TOO_LARGE");
-  if (!Number.isInteger(chunkBytes) || chunkBytes < 256 * 1024 || chunkBytes > 4 * 1024 * 1024)
-    throw new Error("ATTACHMENT_CHUNK_SIZE_INVALID");
-  const key = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
-  const rawKey = new Uint8Array(await crypto.subtle.exportKey("raw", key));
-  return {
-    version: 2,
-    algorithm: "AES-256-GCM-CHUNKED",
-    key: toBase646(rawKey),
-    noncePrefix: toBase646(crypto.getRandomValues(new Uint8Array(8))),
-    plainBytes,
-    chunkBytes,
-    chunkCount: Math.ceil(plainBytes / chunkBytes)
-  };
-}
-async function encryptAttachmentChunk(metadata, index, value) {
-  if (metadata?.version !== 2 || metadata.algorithm !== "AES-256-GCM-CHUNKED" || !Number.isInteger(index) || index < 0 || index >= metadata.chunkCount)
-    throw new Error("INVALID_ATTACHMENT_CHUNK_METADATA");
-  const plain = value instanceof Uint8Array ? value : new Uint8Array(value);
-  const expected = index === metadata.chunkCount - 1 ? metadata.plainBytes - index * metadata.chunkBytes : metadata.chunkBytes;
-  if (plain.byteLength !== expected)
-    throw new Error("ATTACHMENT_CHUNK_SIZE_MISMATCH");
-  const rawKey = fromBase646(metadata.key);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    { name: "AES-GCM" },
-    false,
-    ["encrypt"]
-  );
-  const nonce = chunkNonce(fromBase646(metadata.noncePrefix), index);
-  const cipherBytes = new Uint8Array(
-    await crypto.subtle.encrypt(
-      {
-        name: "AES-GCM",
-        iv: nonce,
-        additionalData: chunkAad(metadata, index, plain.byteLength),
-        tagLength: 128
-      },
-      key,
-      plain
-    )
-  );
-  rawKey.fill(0);
-  return {
-    cipherBytes,
-    descriptor: {
-      index,
-      plainBytes: plain.byteLength,
-      cipherBytes: cipherBytes.byteLength,
-      digest: await sha256Hex(cipherBytes)
-    }
-  };
-}
-async function completeAttachmentChunkMetadata(metadata, chunks) {
-  if (metadata?.version !== 2 || !Array.isArray(chunks) || chunks.length !== metadata.chunkCount)
-    throw new Error("ATTACHMENT_CHUNKS_INCOMPLETE");
-  const normalized = [...chunks].sort((left, right) => left.index - right.index);
-  for (let index = 0; index < normalized.length; index += 1) {
-    const chunk = normalized[index];
-    if (chunk.index !== index || !Number.isInteger(chunk.plainBytes) || !Number.isInteger(chunk.cipherBytes) || !/^[a-f0-9]{64}$/.test(chunk.digest))
-      throw new Error("ATTACHMENT_CHUNKS_INCOMPLETE");
-  }
-  const digest = await sha256Hex(
-    encoder5.encode(normalized.map((chunk) => chunk.digest).join("\n"))
-  );
-  return {
-    ...metadata,
-    cipherBytes: normalized.reduce((sum, chunk) => sum + chunk.cipherBytes, 0),
-    digest,
-    chunks: normalized
-  };
-}
-
 // shared/attachmentRequest.mjs
 function attachmentAbortError() {
   return new DOMException("ATTACHMENT_UPLOAD_ABORTED", "AbortError");
@@ -10002,6 +10084,63 @@ async function uploadEncryptedAttachmentMultipart({
     }
   );
   return { id: upload.uploadId, metadata };
+}
+async function downloadEncryptedAttachmentMultipart({
+  baseUrl,
+  token: token4,
+  attachment,
+  signal,
+  onProgress,
+  fetchImpl = globalThis.fetch,
+  concurrency = 2,
+  requestTimeoutMs = 6e4
+}) {
+  if (attachment?.version !== 2 || attachment.algorithm !== "AES-256-GCM-CHUNKED" || !Array.isArray(attachment.chunks) || attachment.chunks.length !== attachment.chunkCount)
+    throw new Error("INVALID_ATTACHMENT_METADATA");
+  const chunks = new Array(attachment.chunkCount);
+  const pending = attachment.chunks.map((descriptor) => descriptor.index);
+  const descriptors = new Map(
+    attachment.chunks.map((descriptor) => [descriptor.index, descriptor])
+  );
+  let loaded = 0;
+  async function worker(signal2) {
+    while (pending.length) {
+      if (signal2?.aborted) throw abortError();
+      const index = pending.shift();
+      const descriptor = descriptors.get(index);
+      if (!descriptor) throw new Error("INVALID_ATTACHMENT_METADATA");
+      const cipher = await attachmentRequest(async (requestSignal) => {
+        const response = await fetchImpl(
+          `${baseUrl}/api/v1/attachments/${attachment.id}/parts/${index}`,
+          { headers: { "x-device-token": token4 }, signal: requestSignal, redirect: "error" }
+        );
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(
+            response.status === 404 ? "ATTACHMENT_EXPIRED" : payload.error || `BACKEND_${response.status}`
+          );
+        }
+        return new Uint8Array(await response.arrayBuffer());
+      }, { signal: signal2, timeoutMs: requestTimeoutMs });
+      const plain = await decryptAttachmentChunk(
+        cipher,
+        attachment,
+        descriptor
+      );
+      cipher.fill(0);
+      chunks[index] = plain;
+      loaded += descriptor.cipherBytes;
+      onProgress?.({
+        loaded,
+        total: attachment.cipherBytes,
+        ratio: Math.min(1, loaded / attachment.cipherBytes)
+      });
+    }
+  }
+  await runWorkers(concurrency, signal, worker);
+  return new Blob(chunks, {
+    type: attachment.mimeType || "application/octet-stream"
+  });
 }
 
 // integrations/heming-agent/fileDelivery.mjs
@@ -10290,11 +10429,195 @@ function createHermesInvitationWorker({ transport, state, root, onStatus = () =>
   } };
 }
 
+// integrations/heming-agent/inboundFiles.mjs
+import { constants as constants2 } from "node:fs";
+import { mkdir, lstat, open as open2, realpath as realpath2, rename, unlink } from "node:fs/promises";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+import { basename as basename2, join as join2 } from "node:path";
+var sha = (value) => createHash2("sha256").update(value).digest("hex");
+var fail4 = () => {
+  throw Error("AGENT_ATTACHMENT_INVALID");
+};
+var CACHE_BYTES = 512 * 1024 * 1024;
+var CACHE_TTL = 24 * 60 * 60 * 1e3;
+var safeName = (value) => basename2(String(value || "\u9644\u4EF6").replaceAll("\\", "/")).replace(/[\p{Cc}\p{Cf}]/gu, "").slice(0, 200) || "\u9644\u4EF6";
+function validate(attachment) {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(attachment?.id || "") || !Number.isInteger(attachment.plainBytes) || attachment.plainBytes < 1 || attachment.plainBytes > MAX_ATTACHMENT_BYTES || !Number.isInteger(attachment.cipherBytes) || !/^[a-f0-9]{64}$/i.test(attachment.digest || "") || typeof attachment.key !== "string" || Buffer.from(attachment.key, "base64").length !== 32) fail4();
+  if (attachment.version === 1) {
+    if (attachment.algorithm !== "AES-256-GCM" || Buffer.from(attachment.nonce || "", "base64").length !== 12 || attachment.cipherBytes !== attachment.plainBytes + 16) fail4();
+  } else if (attachment.version === 2) {
+    if (attachment.algorithm !== "AES-256-GCM-CHUNKED" || Buffer.from(attachment.noncePrefix || "", "base64").length !== 8 || !Number.isInteger(attachment.chunkBytes) || attachment.chunkBytes < 256 * 1024 || attachment.chunkBytes > 4 * 1024 * 1024 || attachment.chunkCount !== Math.ceil(attachment.plainBytes / attachment.chunkBytes) || attachment.cipherBytes !== attachment.plainBytes + attachment.chunkCount * 16 || !Array.isArray(attachment.chunks) || attachment.chunks.length !== attachment.chunkCount) fail4();
+    const indexes = /* @__PURE__ */ new Set();
+    for (const part of attachment.chunks) {
+      if (!Number.isInteger(part.index) || part.index < 0 || part.index >= attachment.chunkCount || indexes.has(part.index) || part.cipherBytes !== Math.min(attachment.chunkBytes, attachment.plainBytes - part.index * attachment.chunkBytes) + 16 || !/^[a-f0-9]{64}$/i.test(part.digest || "")) fail4();
+      indexes.add(part.index);
+    }
+  } else fail4();
+}
+async function readBounded(response, expected, signal) {
+  const reader = response.body?.getReader();
+  if (!reader) fail4();
+  const parts = [];
+  let size = 0;
+  const abort = () => {
+    void reader.cancel().catch(() => {
+    });
+  };
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    while (true) {
+      signal?.throwIfAborted();
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > expected) fail4();
+      parts.push(value);
+    }
+    signal?.throwIfAborted();
+    if (size !== expected) fail4();
+    return Buffer.concat(parts, size);
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    await reader.cancel().catch(() => {
+    });
+  }
+}
+function createInboundFiles({ directory, transport, channel, state, persist, now = Date.now }) {
+  state.receivedFiles ||= {};
+  const records = state.receivedFiles;
+  let root;
+  async function cacheRoot() {
+    if (root) return root;
+    await mkdir(directory, { recursive: true, mode: 448 });
+    if ((await lstat(directory)).isSymbolicLink()) throw Error("AGENT_ATTACHMENT_CACHE_UNSAFE");
+    const parent = await realpath2(directory);
+    const folder = join2(parent, sha(`${state.session.conversationId}:${state.session.identity.identityId}`));
+    await mkdir(folder, { mode: 448 }).catch((error) => {
+      if (error.code !== "EEXIST") throw error;
+    });
+    const info = await lstat(folder);
+    if (!info.isDirectory() || info.isSymbolicLink() || info.mode & 63) throw Error("AGENT_ATTACHMENT_CACHE_UNSAFE");
+    return root = folder;
+  }
+  const recordPath = (key) => join2(root, key);
+  async function prune(required, keep) {
+    const entries = Object.entries(records).filter(([key]) => /^[a-f0-9]{64}$/.test(key));
+    let total = entries.reduce((sum, [, row]) => sum + row.size, 0);
+    for (const [key, row] of entries.sort((a, b) => a[1].usedAt - b[1].usedAt)) {
+      if (keep.has(key) || row.usedAt + CACHE_TTL > now() && total + required <= CACHE_BYTES && Object.keys(records).length < 128) continue;
+      await unlink(recordPath(key)).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      total -= row.size;
+      delete records[key];
+    }
+    if (total + required > CACHE_BYTES) throw Error("AGENT_ATTACHMENT_CACHE_FULL");
+    persist();
+  }
+  async function receipt(row, signal) {
+    if (!row.receiptPending || !/^[a-zA-Z0-9_-]{1,128}$/.test(row.id)) return;
+    try {
+      await channel.request(`/api/v1/attachments/${row.id}/received`, { method: "POST", signal });
+      row.receiptPending = false;
+      row.acknowledged = true;
+      persist();
+    } catch (error) {
+      if ([403, 404].includes(error.status)) {
+        row.receiptPending = false;
+        persist();
+      }
+    }
+  }
+  async function prepare(event, signal) {
+    const data = event.data;
+    const attachments = data.attachments?.length ? data.attachments : data.attachment ? [data.attachment] : [];
+    if (!attachments.length || attachments.length > MAX_ATTACHMENTS_PER_MESSAGE) fail4();
+    for (const attachment of attachments) validate(attachment);
+    if (new Set(attachments.map((item) => item.id)).size !== attachments.length || attachments.reduce((sum, item) => sum + item.plainBytes, 0) > MAX_ATTACHMENT_BYTES) throw Error("AGENT_ATTACHMENT_LIMIT");
+    await cacheRoot();
+    const keys = attachments.map((item) => sha(JSON.stringify(item)));
+    await prune(0, new Set(keys));
+    const result = [];
+    for (const [index, attachment] of attachments.entries()) {
+      signal?.throwIfAborted();
+      const key = keys[index], path = recordPath(key);
+      let row = records[key], cached = false;
+      if (row) {
+        const file = await open2(path, constants2.O_RDONLY | constants2.O_NOFOLLOW).catch(() => null);
+        if (file) try {
+          const info = await file.stat();
+          cached = info.isFile() && info.nlink === 1 && !(info.mode & 63) && info.size === row.size && sha(await file.readFile()) === row.digest;
+        } finally {
+          await file.close();
+        }
+      }
+      if (!cached) {
+        const fetchImpl = async (url, options) => {
+          const response = await transport.fetchImpl(url, options);
+          if (!response.ok) return response;
+          const part = new URL(url).pathname.match(/\/parts\/(\d+)$/);
+          const expected = part ? attachment.chunks.find((item) => item.index === Number(part[1]))?.cipherBytes : attachment.cipherBytes;
+          if (!Number.isInteger(expected)) fail4();
+          const bytes2 = await readBounded(response, expected, options.signal);
+          return new Response(bytes2, { headers: { "Content-Type": "application/octet-stream" } });
+        };
+        let bytes;
+        if (attachment.version === 2) {
+          const blob = await downloadEncryptedAttachmentMultipart({ baseUrl: transport.origin, token: state.session.token, attachment, signal, fetchImpl });
+          bytes = Buffer.from(await blob.arrayBuffer());
+        } else {
+          const response = await fetchImpl(`${transport.origin}/api/v1/attachments/${attachment.id}`, {
+            headers: { "x-device-token": state.session.token },
+            redirect: "error",
+            signal: AbortSignal.any([signal || new AbortController().signal, AbortSignal.timeout(6e4)])
+          });
+          if (!response.ok) throw Error("AGENT_ATTACHMENT_UNAVAILABLE");
+          bytes = Buffer.from(await decryptAttachmentBytes(await response.arrayBuffer(), attachment));
+        }
+        signal?.throwIfAborted();
+        await prune(bytes.length, new Set(keys));
+        const temp = join2(root, randomUUID2() + ".partial");
+        const file = await open2(temp, constants2.O_WRONLY | constants2.O_CREAT | constants2.O_EXCL | constants2.O_NOFOLLOW, 384);
+        try {
+          try {
+            await file.writeFile(bytes);
+            await file.sync();
+          } finally {
+            await file.close();
+          }
+          signal?.throwIfAborted();
+          await rename(temp, path);
+          const folder = await open2(root, constants2.O_RDONLY);
+          try {
+            await folder.sync();
+          } finally {
+            await folder.close();
+          }
+        } finally {
+          await unlink(temp).catch(() => {
+          });
+        }
+        row = records[key] = { id: attachment.id, size: bytes.length, digest: sha(bytes), usedAt: now(), receiptPending: true, acknowledged: false };
+        bytes.fill(0);
+        persist();
+      }
+      row.usedAt = now();
+      persist();
+      await receipt(row, signal);
+      result.push({ path, fileName: safeName(attachment.fileName), mimeType: String(attachment.mimeType || "application/octet-stream").slice(0, 150), plainBytes: row.size });
+    }
+    return result;
+  }
+  return { prepare, async flush(signal) {
+    for (const row of Object.values(records).filter((row2) => row2.receiptPending).slice(0, 8)) await receipt(row, signal);
+  } };
+}
+
 // integrations/heming-agent/connector.mjs
 function createAgentConnector({ transport, store, onMessage, onAction = () => {
 }, onTaskRequest = () => {
 }, onStatus = () => {
-}, taskTimeoutMs = 6e5, taskInteractions = false, streamReplies = false, protectedPaths = [], invitationRoot }) {
+}, taskTimeoutMs = 6e5, taskInteractions = false, streamReplies = false, protectedPaths = [], invitationRoot, receivedDirectory }) {
   const state = store.read();
   if (!state?.session?.token) throw Error("AGENT_PAIRING_REQUIRED");
   state.inbox ||= [];
@@ -10306,8 +10629,10 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
   const interactions = createInteractionDelivery({ channel, state, persist });
   const managedTasks = createManagedTaskDelivery({ channel, state, persist, onRequest: onTaskRequest });
   const files = createFileDelivery({ channel, transport, state, persist, protectedPaths });
+  const incoming = receivedDirectory ? createInboundFiles({ directory: receivedDirectory, transport, channel, state, persist }) : null;
   const invitations = invitationRoot ? createHermesInvitationWorker({ transport, state, root: invitationRoot, onStatus }) : null;
   let taskSignal;
+  let preparingInput = null;
   let activeSync = null;
   let activeDrain = null;
   let started = false;
@@ -10317,16 +10642,32 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     state.job = job2;
     persist();
     const deadline = AbortSignal.timeout(taskTimeoutMs);
-    taskSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+    const inputCancel = new AbortController();
+    taskSignal = AbortSignal.any([...signal ? [signal] : [], deadline, inputCancel.signal]);
+    const hasFiles = Boolean(event.data.attachments?.length || event.data.attachment);
+    let filesPrepared = !hasFiles;
     try {
       if (taskInteractions) await work.begin(job2);
       if (event.data.whisper || event.data.ephemeral) throw Error("AGENT_EPHEMERAL_UNSUPPORTED");
-      if (event.data.contentType && event.data.contentType !== "text") throw Error("AGENT_MEDIA_UNSUPPORTED");
+      const inputType = event.data.contentType || "text";
+      if (!["text", "file", "image", "video", "media"].includes(inputType) || hasFiles && !incoming || !hasFiles && inputType !== "text") throw Error("AGENT_MEDIA_UNSUPPORTED");
+      let inputFiles = [];
+      if (hasFiles) {
+        preparingInput = { requestId: job2.requestMessageId, controller: inputCancel };
+        try {
+          if (taskInteractions) await work.update(job2.requestMessageId, { status: "working", canStop: true });
+          inputFiles = await incoming.prepare(event, taskSignal);
+          filesPrepared = true;
+        } finally {
+          preparingInput = null;
+        }
+      }
+      taskSignal.throwIfAborted();
       const result = await abortable(onMessage({
         id: event.data.messageId,
-        text: event.data.agentDocument ? agentDocumentPrompt(event.data.agentDocument, event.data.text) : event.data.text,
+        text: event.data.agentInput?.document || event.data.agentDocument ? agentDocumentPrompt(event.data.agentInput?.document || event.data.agentDocument, event.data.agentInput?.instruction || event.data.text) : event.data.agentInput?.instruction || event.data.text,
         contentType: event.data.contentType,
-        attachments: event.data.attachments || [],
+        attachments: inputFiles,
         conversationId: state.session.conversationId,
         senderIdentityId: state.session.ownerIdentityId,
         signal: taskSignal,
@@ -10360,8 +10701,8 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       if (text4.length > 131072) throw Error("AGENT_REPLY_LIMIT");
       delivery.prepare(job2, text4, "completed");
     } catch (error) {
-      const stopped = error.message === "AGENT_TASK_STOPPED";
-      const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u652F\u6301\u6587\u5B57\u548C Markdown\uFF0C\u6682\u4E0D\u652F\u6301\u5904\u7406\u9644\u4EF6\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
+      const stopped = error.message === "AGENT_TASK_STOPPED" || taskSignal.aborted && taskSignal.reason?.message === "AGENT_TASK_STOPPED";
+      const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u6682\u4E0D\u652F\u6301\u8FD9\u7C7B\u9644\u4EF6\uFF0C\u8BF7\u66F4\u65B0\u63D2\u4EF6\u540E\u91CD\u8BD5\u3002" : !filesPrepared || error.message.startsWith("AGENT_ATTACHMENT_") || error.message.startsWith("ATTACHMENT_") || error.message.startsWith("INVALID_ATTACHMENT") ? "\u9644\u4EF6\u672A\u80FD\u5B8C\u6574\u8BFB\u53D6\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u662F\u5426\u8FC7\u671F\u3001\u5927\u5C0F\u662F\u5426\u8D85\u8FC7\u5355\u6B21100MB\uFF0C\u6216\u66F4\u65B0\u914D\u5957\u670D\u52A1\u540E\u91CD\u65B0\u53D1\u9001\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
       delivery.prepare(job2, explanation, stopped ? "stopped" : "failed");
       onStatus("task-failed");
     }
@@ -10386,7 +10727,11 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
               }
               if (event.type === "agent.action") {
                 if (!state.handledMessages.includes(event.eventId)) {
-                  if (!event.data.kind || work.accepts(event.data)) actions2.push(event);
+                  if (!event.data.kind || work.accepts(event.data)) {
+                    if (event.data.kind === "task" && event.data.action === "stop" && preparingInput?.requestId === event.data.requestMessageId)
+                      preparingInput.controller.abort(Error("AGENT_TASK_STOPPED"));
+                    else actions2.push(event);
+                  }
                   state.handledMessages = [...state.handledMessages, event.eventId].slice(-4096);
                 }
                 continue;
@@ -10412,6 +10757,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     });
     await activeSync;
     await managedTasks.flush();
+    await incoming?.flush(signal);
     if (!activeDrain) await files.flush(signal);
     if (!activeDrain) activeDrain = (async () => {
       if (state.job) await delivery.finish(state.job);
@@ -10621,7 +10967,8 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
         requestId: request.id,
         text: request.text,
         conversationId: request.conversationId,
-        senderIdentityId: request.senderIdentityId
+        senderIdentityId: request.senderIdentityId,
+        attachments: request.attachments || []
       });
       return feed;
     },
@@ -10666,6 +11013,7 @@ try {
         store,
         taskInteractions: true,
         protectedPaths,
+        ...option("--provider") === "Hermes" && option("--received-root") ? { receivedDirectory: resolve4(option("--received-root")) } : {},
         streamReplies: option("--provider") === "Hermes",
         ...option("--provider") === "Hermes" && option("--protected-root") ? { invitationRoot: resolve4(option("--protected-root")) } : {},
         onMessage: bridge.onMessage,
