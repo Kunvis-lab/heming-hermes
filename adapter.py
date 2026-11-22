@@ -15,7 +15,7 @@ from gateway.platforms.event import MessageEvent, MessageType
 from hermes_constants import get_hermes_home
 
 from .setup import environment_defaults, interactive_setup, is_configured
-from .approval import ApprovalCards
+from .approval import ApprovalAlreadyPending, ApprovalCards
 from .work import WorkCards
 from .managed_tasks import ManagedTasks
 
@@ -251,20 +251,37 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             self._sends.pop(nonce, None)
 
     async def send_exec_approval(self, chat_id, command, session_key, description=None,
-                                 metadata=None, allow_permanent=True, allow_session=True, smart_denied=False):
+                                 metadata=None, allow_permanent=True, allow_session=True, smart_denied=False,
+                                 request_id=None):
+        return await self._send_approval_card(chat_id, command, session_key, description, allow_permanent,
+            allow_session, smart_denied, request_id=request_id)
+
+    async def _send_approval_card(self, chat_id, command, session_key, description, allow_permanent,
+                                  allow_session, smart_denied, *, request_id, offered_actions=None):
+        request, session = self._request, self._session
         try:
             message_id = await self._approvals.send(chat_id, command, session_key, description,
-                allow_permanent, allow_session, smart_denied)
+                allow_permanent, allow_session, smart_denied, request_id=request_id, offered_actions=offered_actions)
             return SendResult(success=True, message_id=message_id)
-        except (ImportError, RuntimeError, ValueError, asyncio.TimeoutError):
+        except ApprovalAlreadyPending:
+            return SendResult(success=False, error="HEMING_APPROVAL_ALREADY_PENDING")
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError, asyncio.TimeoutError):
+            if (request and self._request is request and session and self._session is session and
+                    str(chat_id) == session["conversationId"] and not request.get("approvalDeliveryFailed")):
+                request["approvalDeliveryFailed"] = True
+                try:
+                    await self._write({"type": "approval-delivery-failed", "requestId": request["requestId"]})
+                except (OSError, RuntimeError, asyncio.TimeoutError):
+                    pass  # The task's terminal update carries the same failure if the bridge recovers.
             return SendResult(success=False, error="HEMING_APPROVAL_UNAVAILABLE")
 
     async def _send_exec_approval_prompt(self, prompt):
         # New Hermes native-card capability hook; the legacy entry point above
         # remains compatible with older runners. Never change Hermes policy.
         choices = {choice for _, choice, _ in prompt.actions}
-        return await self.send_exec_approval(prompt.chat_id, prompt.command, prompt.session_key,
-            prompt.description, prompt.metadata, "always" in choices, "session" in choices, prompt.smart_denied)
+        return await self._send_approval_card(prompt.chat_id, prompt.command, prompt.session_key,
+            prompt.description, "always" in choices, "session" in choices, prompt.smart_denied,
+            request_id=getattr(prompt, "request_id", None), offered_actions=choices)
 
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         if not self._session or str(chat_id) != self._session["conversationId"]:
@@ -301,6 +318,8 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             return SendResult(success=False, error="HEMING_DELIVERY_FAILED")
 
     async def _snapshot(self):
+        if self._request.get("approvalDeliveryFailed"):
+            return  # Do not replace a delivery failure with a late stream frame.
         await self._write({"type": "snapshot", "requestId": self._request["requestId"],
             "text": "\n\n".join(self._parts.values())})
 
@@ -377,10 +396,16 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             request = self._request
             try:
                 await self._approvals.close_request(request["requestId"])
-                if outcome.value == "success":
-                    await self._snapshot()
-                await self._write({"type": "complete" if outcome.value == "success" else "failed",
-                    "requestId": request["requestId"]})
+                if self._request is not request:
+                    return
+                if request.get("approvalDeliveryFailed"):
+                    await self._write({"type": "failed", "requestId": request["requestId"],
+                        "code": "AGENT_APPROVAL_DELIVERY_FAILED"})
+                else:
+                    if outcome.value == "success":
+                        await self._snapshot()
+                    await self._write({"type": "complete" if outcome.value == "success" else "failed",
+                        "requestId": request["requestId"]})
             finally:
                 if self._request is request:
                     self._clear_request()

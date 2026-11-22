@@ -9654,6 +9654,72 @@ function createReplyDelivery({ channel, state, persist, beforeClear = async () =
   return { prepare, finish, preview };
 }
 
+// integrations/heming-agent/replyFeed.mjs
+var APPROVAL_DELIVERY_FAILURE = Object.freeze({
+  code: "AGENT_APPROVAL_DELIVERY_FAILED",
+  text: "\u5BA1\u6279\u5361\u7247\u672A\u80FD\u9001\u8FBE\uFF0C\u8BE5\u64CD\u4F5C\u672A\u83B7\u6279\u51C6\u3002"
+});
+function createReplyFeed(signal) {
+  let pending = null, done = false, approvalFailed = false, error = null, wake;
+  const notify = () => {
+    wake?.();
+    wake = null;
+  };
+  const abort = () => {
+    error = signal.reason || Error("AGENT_ABORTED");
+    done = true;
+    notify();
+  };
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const finish = () => {
+    done = true;
+    signal?.removeEventListener("abort", abort);
+    notify();
+  };
+  return {
+    snapshot(text4) {
+      if (!done && !approvalFailed) {
+        pending = { mode: "snapshot", text: text4 };
+        notify();
+      }
+    },
+    approvalDeliveryFailed() {
+      if (!done && !approvalFailed) {
+        approvalFailed = true;
+        pending = { mode: "snapshot", text: APPROVAL_DELIVERY_FAILURE.text, urgent: true };
+        notify();
+      }
+    },
+    complete() {
+      if (done) return;
+      if (approvalFailed) error = Error(APPROVAL_DELIVERY_FAILURE.code);
+      finish();
+    },
+    fail(reason) {
+      if (!done) {
+        error = reason;
+        finish();
+      }
+    },
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        if (pending) {
+          const value = pending;
+          pending = null;
+          yield value;
+          continue;
+        }
+        if (error) throw error;
+        if (done) return;
+        await new Promise((resolve5) => {
+          wake = resolve5;
+        });
+      }
+    }
+  };
+}
+
 // integrations/heming-agent/abortable.mjs
 function abortable(value, signal) {
   if (!signal) return Promise.resolve(value);
@@ -10685,7 +10751,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
           const delta = next.value;
           text4 = delta?.mode === "snapshot" ? String(delta.text || "") : text4 + String(delta || "");
           if (text4.length > 131072) throw Error("AGENT_REPLY_LIMIT");
-          if (streamReplies && !previewPaused && Date.now() - lastPreviewAt >= 750) {
+          if (streamReplies && !previewPaused && (delta?.urgent === true || Date.now() - lastPreviewAt >= 750)) {
             try {
               await delivery.preview(job2, text4);
             } catch {
@@ -10702,7 +10768,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       delivery.prepare(job2, text4, "completed");
     } catch (error) {
       const stopped = error.message === "AGENT_TASK_STOPPED" || taskSignal.aborted && taskSignal.reason?.message === "AGENT_TASK_STOPPED";
-      const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u6682\u4E0D\u652F\u6301\u8FD9\u7C7B\u9644\u4EF6\uFF0C\u8BF7\u66F4\u65B0\u63D2\u4EF6\u540E\u91CD\u8BD5\u3002" : !filesPrepared || error.message.startsWith("AGENT_ATTACHMENT_") || error.message.startsWith("ATTACHMENT_") || error.message.startsWith("INVALID_ATTACHMENT") ? "\u9644\u4EF6\u672A\u80FD\u5B8C\u6574\u8BFB\u53D6\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u662F\u5426\u8FC7\u671F\u3001\u5927\u5C0F\u662F\u5426\u8D85\u8FC7\u5355\u6B21100MB\uFF0C\u6216\u66F4\u65B0\u914D\u5957\u670D\u52A1\u540E\u91CD\u65B0\u53D1\u9001\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
+      const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === APPROVAL_DELIVERY_FAILURE.code ? APPROVAL_DELIVERY_FAILURE.text : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u6682\u4E0D\u652F\u6301\u8FD9\u7C7B\u9644\u4EF6\uFF0C\u8BF7\u66F4\u65B0\u63D2\u4EF6\u540E\u91CD\u8BD5\u3002" : !filesPrepared || error.message.startsWith("AGENT_ATTACHMENT_") || error.message.startsWith("ATTACHMENT_") || error.message.startsWith("INVALID_ATTACHMENT") ? "\u9644\u4EF6\u672A\u80FD\u5B8C\u6574\u8BFB\u53D6\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u662F\u5426\u8FC7\u671F\u3001\u5927\u5C0F\u662F\u5426\u8D85\u8FC7\u5355\u6B21100MB\uFF0C\u6216\u66F4\u65B0\u914D\u5957\u670D\u52A1\u540E\u91CD\u65B0\u53D1\u9001\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
       delivery.prepare(job2, explanation, stopped ? "stopped" : "failed");
       onStatus("task-failed");
     }
@@ -10839,59 +10905,6 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
 
 // integrations/heming-agent/stdioBridge.mjs
 import { createInterface } from "node:readline";
-
-// integrations/heming-agent/replyFeed.mjs
-function createReplyFeed(signal) {
-  let pending = null, done = false, error = null, wake;
-  const notify = () => {
-    wake?.();
-    wake = null;
-  };
-  const abort = () => {
-    error = signal.reason || Error("AGENT_ABORTED");
-    done = true;
-    notify();
-  };
-  if (signal?.aborted) abort();
-  else signal?.addEventListener("abort", abort, { once: true });
-  const finish = () => {
-    done = true;
-    signal?.removeEventListener("abort", abort);
-    notify();
-  };
-  return {
-    snapshot(text4) {
-      if (!done) {
-        pending = { mode: "snapshot", text: text4 };
-        notify();
-      }
-    },
-    complete() {
-      finish();
-    },
-    fail(reason) {
-      error = reason;
-      finish();
-    },
-    async *[Symbol.asyncIterator]() {
-      while (true) {
-        if (pending) {
-          const value = pending;
-          pending = null;
-          yield value;
-          continue;
-        }
-        if (error) throw error;
-        if (done) return;
-        await new Promise((resolve5) => {
-          wake = resolve5;
-        });
-      }
-    }
-  };
-}
-
-// integrations/heming-agent/stdioBridge.mjs
 function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => process.stdout.write(JSON.stringify(value) + "\n"), signal }) {
   const lines = createInterface({ input, crlfDelay: Infinity });
   let active;
@@ -10932,8 +10945,9 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
           );
         }
         if (event.type === "snapshot" && typeof event.text === "string") active.feed.snapshot(event.text);
+        else if (event.type === "approval-delivery-failed") active.feed.approvalDeliveryFailed();
         else if (event.type === "complete") active.feed.complete();
-        else if (event.type === "failed") active.feed.fail(Error("AGENT_PROVIDER_FAILED"));
+        else if (event.type === "failed") active.feed.fail(Error(event.code === APPROVAL_DELIVERY_FAILURE.code ? APPROVAL_DELIVERY_FAILURE.code : "AGENT_PROVIDER_FAILED"));
         else if (event.type === "stopped") active.feed.fail(Error("AGENT_TASK_STOPPED"));
       }
     } catch {
