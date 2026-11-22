@@ -4589,13 +4589,17 @@ function createAgentTransport({ origin = HEMING_ORIGIN, fetchImpl } = {}) {
     request.once("error", reject);
     request.end(options.body);
   }));
-  const api = async (path, { token: token4, body, method = body ? "POST" : "GET", signal } = {}) => {
+  const api = async (path, { token: token4, body, method = body ? "POST" : "GET", signal, retainAgentReceipt } = {}) => {
     if (!path.startsWith("/api/v1/")) throw Error("INVALID_AGENT_API_PATH");
     const response = await transportFetch(origin + path, { method, redirect: "error", headers: {
       "Content-Type": "application/json",
-      ...token4 ? { "x-device-token": token4 } : {}
+      ...token4 ? { "x-device-token": token4 } : {},
+      ...retainAgentReceipt ? { "x-agent-envelope-receipt": "1" } : {}
     }, ...body ? { body: JSON.stringify(body) } : {}, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15e3)]) : AbortSignal.timeout(15e3) });
-    const result = await response.json();
+    const result = await response.json().catch((cause) => {
+      if (!response.ok) return {};
+      throw Object.assign(Error("AGENT_ACK_UNREADABLE", { cause }), { code: "AGENT_ACK_UNREADABLE" });
+    });
     if (!response.ok) throw Object.assign(Error(result.error || "AGENT_REQUEST_FAILED"), { status: response.status });
     return result;
   };
@@ -6695,7 +6699,7 @@ async function ensureAgentPairing({ transport, store, provider, onQr, signal }) 
 }
 
 // integrations/heming-agent/connector.mjs
-import { setTimeout as delay3 } from "node:timers/promises";
+import { setTimeout as delay4 } from "node:timers/promises";
 
 // shared/hemingEmojiCatalog.mjs
 var ROWS = [
@@ -9399,8 +9403,31 @@ function unreadHintForPayload(conversationId, actorIdentityId, payload) {
 }
 
 // integrations/heming-agent/secureChannel.mjs
+import { setTimeout as delay2 } from "node:timers/promises";
+var transientApprovalCodes = /* @__PURE__ */ new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "EAI_AGAIN",
+  "ENOTFOUND",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ERR_STREAM_PREMATURE_CLOSE"
+]);
+var retryableApprovalError = (error) => error.name === "TimeoutError" || error.code === "AGENT_ACK_UNREADABLE" || transientApprovalCodes.has(error.code) || transientApprovalCodes.has(error.cause?.code) || [408, 425, 429, 500, 502, 503, 504].includes(error.status);
 function createSecureAgentChannel({ transport, state, persist }) {
   const { session } = state;
+  const approvalSends = /* @__PURE__ */ new Map();
+  function approvalIsLive(approval) {
+    return approval && !approval.signal.aborted && Date.now() < approval.expiresAt && state.job?.requestMessageId === approval.requestId && !state.job.finalStatus;
+  }
+  function requireLiveApproval(approval) {
+    if (approval && !approvalIsLive(approval)) throw Error("AGENT_APPROVAL_DELIVERY_CLOSED");
+  }
   const sign = async (value) => {
     const key = await crypto.subtle.importKey("jwk", state.proofPrivateKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
     return Buffer.from(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(value))).toString("base64");
@@ -9417,17 +9444,38 @@ function createSecureAgentChannel({ transport, state, persist }) {
     persist();
     await request("/api/v1/devices/current/prekeys", { body: { prekeys: generated.bundles, cryptoVersion: 3 } });
   }
-  async function flushOutbox() {
-    if (!state.outbox) return;
-    await request(`/api/v1/conversations/${session.conversationId}/envelopes`, { body: state.outbox });
+  function clearOutbox() {
     state.outbox = null;
+    delete state.outboxApprovalId;
     persist();
   }
-  async function send(event) {
+  async function flushOutbox() {
+    const envelope = state.outbox;
+    if (!envelope) return;
+    const isApproval = state.outboxApprovalId === envelope.clientMessageId;
+    const approval = isApproval ? approvalSends.get(envelope.clientMessageId) : void 0;
+    if (isApproval && !approvalIsLive(approval)) {
+      clearOutbox();
+      return;
+    }
+    await request(`/api/v1/conversations/${session.conversationId}/envelopes`, {
+      body: envelope,
+      signal: approval?.signal,
+      retainAgentReceipt: isApproval
+    });
+    if (approval) approval.accepted = true;
+    clearOutbox();
+  }
+  async function send(event, approval) {
+    requireLiveApproval(approval);
+    if (approval?.accepted) return;
     const unread = unreadHintForPayload(session.conversationId, session.identity.identityId, event);
     await flushOutbox();
+    requireLiveApproval(approval);
+    if (approval?.accepted) return;
     const { targets } = await request(`/api/v1/conversations/${session.conversationId}/prekeys?targetIdentityId=${session.ownerIdentityId}`, {
-      body: { establishedDeviceIds: Object.values(state.outbound).map((item) => item.recipientDeviceId) }
+      body: { establishedDeviceIds: Object.values(state.outbound).map((item) => item.recipientDeviceId) },
+      signal: approval?.signal
     });
     if (!targets.length) throw Error("AGENT_OWNER_DEVICE_UNAVAILABLE");
     const packets = [], changes = {};
@@ -9497,6 +9545,7 @@ function createSecureAgentChannel({ transport, state, persist }) {
       });
       encrypted = await authenticateEncryptedEnvelope({ encrypted, context, senderDeviceProofPublicKey: state.devicePublicKey, sign });
     } else encrypted = packMultiDeviceEnvelopes(packets);
+    requireLiveApproval(approval);
     if (!migration) Object.assign(state.outbound, changes);
     state.outbox = {
       clientMessageId: event.eventId,
@@ -9504,6 +9553,7 @@ function createSecureAgentChannel({ transport, state, persist }) {
       recipients: [{ recipientIdentityId: session.ownerIdentityId, ...encrypted }],
       ...unread ? { unread } : {}
     };
+    if (approval) state.outboxApprovalId = event.eventId;
     persist();
     await flushOutbox();
   }
@@ -9546,13 +9596,41 @@ function createSecureAgentChannel({ transport, state, persist }) {
     return payload;
   }
   let sendTail = Promise.resolve();
-  const sendSerial = (event) => {
-    const result = sendTail.then(() => send(event));
+  const serialize = (action) => {
+    const result = sendTail.then(action);
     sendTail = result.catch(() => {
     });
     return result;
   };
-  return { request, ensurePrekeys, send: sendSerial, decrypt, flushOutbox };
+  const sendSerial = (event) => serialize(() => send(event));
+  async function sendApproval(event, signal) {
+    const { expiresAt, requestMessageId } = event.data.agentInteraction;
+    const expiry = Date.parse(expiresAt);
+    const remaining = expiry - Date.now();
+    if (!Number.isFinite(remaining) || remaining <= 0 || remaining > 864e5) throw Error("AGENT_APPROVAL_DELIVERY_CLOSED");
+    if (approvalSends.has(event.eventId)) throw Error("AGENT_APPROVAL_ALREADY_SENDING");
+    const deadline = AbortSignal.timeout(remaining);
+    const approval = { requestId: requestMessageId, expiresAt: expiry, signal: signal ? AbortSignal.any([signal, deadline]) : deadline };
+    approvalSends.set(event.eventId, approval);
+    try {
+      for (let pause = 250; ; pause = Math.min(1e4, pause * 2)) {
+        try {
+          await serialize(() => send(event, approval));
+          requireLiveApproval(approval);
+          return;
+        } catch (error) {
+          if (!approvalIsLive(approval) || !retryableApprovalError(error)) throw error;
+          await delay2(pause, void 0, { signal: approval.signal });
+        }
+      }
+    } finally {
+      approvalSends.delete(event.eventId);
+      await serialize(() => {
+        if (state.outbox?.clientMessageId === event.eventId && state.outboxApprovalId === event.eventId) clearOutbox();
+      });
+    }
+  }
+  return { request, ensurePrekeys, send: sendSerial, sendApproval, decrypt, flushOutbox: () => serialize(flushOutbox) };
 }
 
 // integrations/heming-agent/replyDelivery.mjs
@@ -9737,7 +9815,7 @@ function abortable(value, signal) {
 // integrations/heming-agent/interactionDelivery.mjs
 function createInteractionDelivery({ channel, state, persist }) {
   state.interactions ||= {};
-  async function send(value, targetMessageId) {
+  async function send(value, targetMessageId, signal) {
     const interaction = normalizeAgentInteraction(value);
     if (interaction.ownerIdentityId !== String(state.session.ownerIdentityId)) throw Error("AGENT_RECIPIENT_MISMATCH");
     const text4 = `\u9700\u8981\u4F60\u7684\u6279\u51C6
@@ -9745,7 +9823,8 @@ ${interaction.command}
 ${interaction.reason}
 ${approvalStatusLabel(interaction.status)}`;
     if (!targetMessageId) {
-      if (interaction.requestMessageId !== state.job?.requestMessageId || interaction.status !== "pending" || interaction.revision !== 0)
+      signal?.throwIfAborted();
+      if (interaction.requestMessageId !== state.job?.requestMessageId || state.job.finalStatus || interaction.status !== "pending" || interaction.revision !== 0)
         throw Error("AGENT_APPROVAL_TASK_MISMATCH");
       if (state.interactions[interaction.id]) throw Error("AGENT_APPROVAL_ALREADY_SENT");
       const id2 = crypto.randomUUID();
@@ -9756,7 +9835,18 @@ ${approvalStatusLabel(interaction.status)}`;
         if (item.agentInteraction.status !== "pending") delete state.interactions[key];
       }
       persist();
-      await channel.send(createChatEvent("message.create", { messageId: id2, contentType: "text", text: text4, agentInteraction: interaction }, { eventId: id2 }));
+      try {
+        await channel.sendApproval(createChatEvent("message.create", {
+          messageId: id2,
+          contentType: "text",
+          text: text4,
+          agentInteraction: interaction
+        }, { eventId: id2 }), signal);
+      } catch (error) {
+        message.agentInteraction = { ...interaction, status: "closed", revision: 1 };
+        persist();
+        throw error;
+      }
       return id2;
     }
     const previous = state.interactions[interaction.id];
@@ -9928,7 +10018,7 @@ function abortError() {
   error.name = "AbortError";
   return error;
 }
-function delay2(milliseconds, signal) {
+function delay3(milliseconds, signal) {
   return new Promise((resolve5, reject) => {
     if (signal?.aborted) return reject(abortError());
     const abort = () => {
@@ -10012,7 +10102,7 @@ async function putPartWithRetry({
     } catch (error) {
       if (!retryableAttachmentError(error)) throw error;
       lastError = error;
-      if (attempt < 3) await delay2(250 * 3 ** attempt, signal);
+      if (attempt < 3) await delay3(250 * 3 ** attempt, signal);
     }
   }
   throw lastError || new Error("ATTACHMENT_UPLOAD_NETWORK");
@@ -10700,6 +10790,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
   let taskSignal;
   let preparingInput = null;
   let activeSync = null;
+  let resyncRequested = false;
   let activeDrain = null;
   let started = false;
   let timer;
@@ -10776,9 +10867,11 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     taskSignal = null;
   }
   async function sync(signal) {
+    if (activeSync) resyncRequested = true;
     if (!activeSync) activeSync = (async () => {
       let more = true;
-      while (more && !signal?.aborted) {
+      while ((more || resyncRequested) && !signal?.aborted) {
+        resyncRequested = false;
         const result = await channel.request("/api/v1/sync?limit=100", { signal });
         const pending = result.pending || [];
         more = pending.length >= 100;
@@ -10879,7 +10972,7 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         } catch (error) {
           if ([401, 403].includes(error.status) || error.message === "AGENT_REVOKED") throw error;
           onStatus("reconnecting");
-          await delay3(Math.min(3e4, 1e3 * 2 ** Math.min(attempt++, 5)), void 0, { signal }).catch(() => {
+          await delay4(Math.min(3e4, 1e3 * 2 ** Math.min(attempt++, 5)), void 0, { signal }).catch(() => {
           });
         }
       }
@@ -10909,6 +11002,32 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
   const lines = createInterface({ input, crlfDelay: Infinity });
   let active;
   let connector;
+  const cancelApprovals = (turn) => {
+    if (!turn) return;
+    turn.closed = true;
+    for (const pending of turn.approvals.values()) pending.abort();
+  };
+  function deliverInteraction(event) {
+    if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
+    const respond = (promise) => promise.then(
+      (id3) => emit2({ type: "sent", nonce: event.nonce, messageId: id3 }),
+      () => emit2({ type: "send-failed", nonce: event.nonce })
+    );
+    if (event.targetMessageId) {
+      void respond(connector.sendInteraction(event.interaction, event.targetMessageId));
+      return;
+    }
+    const turn = active;
+    const id2 = event.interaction?.id;
+    if (!turn || turn.closed || event.interaction?.requestMessageId !== turn.id || turn.approvals.has(id2)) {
+      emit2({ type: "send-failed", nonce: event.nonce });
+      return;
+    }
+    const pending = new AbortController();
+    turn.approvals.set(id2, pending);
+    const signal2 = AbortSignal.any([pending.signal, turn.request.signal]);
+    void respond(connector.sendInteraction(event.interaction, void 0, signal2)).finally(() => turn.approvals.delete(id2));
+  }
   lines.on("line", (line) => {
     try {
       if (line.length > 27e4) throw Error("BRIDGE_INPUT_LIMIT");
@@ -10931,12 +11050,10 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
           () => emit2({ type: "send-failed", nonce: event.nonce })
         );
       } else if (event.type === "interaction" && connector) {
-        if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
-        void connector.sendInteraction(event.interaction, event.targetMessageId).then(
-          (id2) => emit2({ type: "sent", nonce: event.nonce, messageId: id2 }),
-          () => emit2({ type: "send-failed", nonce: event.nonce })
-        );
+        deliverInteraction(event);
       } else if (active && event.requestId === active.id) {
+        if (event.type === "cancel-approval-delivery") active.approvals.get(event.interactionId)?.abort();
+        if (["complete", "failed", "stopped"].includes(event.type)) cancelApprovals(active);
         if (event.type === "task" || event.type === "question") {
           const send = event.type === "task" ? active.request.updateTask(event.update) : active.request.sendQuestion(event.card, event.targetMessageId);
           void send.then(
@@ -10956,10 +11073,10 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
   });
   const close = () => {
     lines.close();
-    active?.feed.fail(Error("AGENT_BRIDGE_CLOSED"));
   };
   signal?.addEventListener("abort", close, { once: true });
   lines.on("close", () => {
+    cancelApprovals(active);
     active?.feed.fail(Error("AGENT_BRIDGE_CLOSED"));
   });
   return {
@@ -10974,7 +11091,8 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
     },
     onMessage(request) {
       const feed = createReplyFeed(request.signal);
-      active = { id: request.id, feed, request };
+      cancelApprovals(active);
+      active = { id: request.id, feed, request, approvals: /* @__PURE__ */ new Map() };
       request.signal.addEventListener("abort", () => emit2({ type: "cancel", requestId: request.id }), { once: true });
       emit2({
         type: "message",

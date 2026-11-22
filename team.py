@@ -131,12 +131,12 @@ class HemingTeamAdapter(HemingReplyPresentation, BasePlatformAdapter):
         return await member.delete_message(chat_id, message_id) if member else False
 
     async def send_exec_approval(self, chat_id, command, session_key, description=None, metadata=None,
-                                 allow_permanent=True, allow_session=True, smart_denied=False):
+                                 allow_permanent=True, allow_session=True, smart_denied=False, request_id=None):
         member = self._recipient(chat_id)
         if not member:
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
         return await member.send_exec_approval(chat_id, command, session_key, description, metadata,
-                                              allow_permanent, allow_session, smart_denied)
+                                              allow_permanent, allow_session, smart_denied, request_id=request_id)
 
     async def _send_exec_approval_prompt(self, prompt):
         member = self._recipient(prompt.chat_id)

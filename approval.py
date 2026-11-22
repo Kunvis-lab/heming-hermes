@@ -8,6 +8,10 @@ class ApprovalAlreadyPending(RuntimeError):
     """A duplicate notification must not end the original approval."""
 
 
+class ApprovalDeliveryClosed(RuntimeError):
+    """The original wait ended before the delivery was confirmed."""
+
+
 def find_pending_approval(entries, request_id, command, description, redact):
     if request_id is not None:
         if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 128:
@@ -81,7 +85,8 @@ class ApprovalCards:
                 "reason": redaction.redact_sensitive_text(str(description or entry.get("description") or "此操作需要你的批准"), force=True)[:2000],
                 "actions": actions, "status": "pending", "revision": 0,
                 "expiresAt": (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat()}
-        record = {"card": card, "session": session_key, "chat": str(chat_id), "message": None}
+        record = {"card": card, "session": session_key, "chat": str(chat_id), "message": None,
+                  "delivery_ready": asyncio.Event()}
         # Reserve synchronously before the first await, so concurrent prompts
         # with identical command text can never claim one approval twice.
         self.records[request_id] = record
@@ -90,10 +95,18 @@ class ApprovalCards:
                 break
             if old["card"]["status"] != "pending":
                 del self.records[key]
+        task = asyncio.create_task(self._watch(record))
+        self.monitors.add(task)
+        task.add_done_callback(self.monitors.discard)
         try:
-            result = await adapter._bridge_send({"type": "interaction", "conversationId": str(chat_id), "interaction": card})
-            if adapter._request is not request or adapter._session is not session or record["card"]["status"] != "pending":
-                raise RuntimeError("HEMING_APPROVAL_TASK_CLOSED")
+            # The connector retries up to the original expiry. This extra second
+            # is for the local pipe's terminal ACK, never a longer approval window.
+            result = await adapter._bridge_send({"type": "interaction", "conversationId": str(chat_id),
+                "interaction": card}, timeout=timeout + 1)
+            if (adapter._request is not request or adapter._session is not session or
+                    record["card"]["status"] != "pending" or self._expired(card) or
+                    not self._still_pending(record)):
+                raise ApprovalDeliveryClosed()
             if not isinstance(result.get("messageId"), str) or not result["messageId"]:
                 raise RuntimeError("HEMING_APPROVAL_DELIVERY_UNCONFIRMED")
             # New Hermes keeps a native card deny-only until its whole command was delivered.
@@ -101,13 +114,21 @@ class ApprovalCards:
             if restrict and actions != ["deny"]:
                 restrict(session_key, request_id, restricted=False)
             record["message"] = result["messageId"]
-        except BaseException:
-            self._withdraw(record, "notification_failed")
-            card["status"] = "failed"
+        except BaseException as error:
+            if record["card"]["status"] == "pending":
+                if isinstance(error, ApprovalDeliveryClosed):
+                    await self._settle(record, "expired" if self._expired(card) else "closed")
+                    self._withdraw(record, "timeout" if self._expired(card) else "turn_finished")
+                else:
+                    self._withdraw(record, "notification_failed")
+                    card["status"] = "failed"
+                    if isinstance(error, asyncio.CancelledError):
+                        await self._cancel_delivery(record)
+            elif not isinstance(error, asyncio.CancelledError):
+                raise ApprovalDeliveryClosed() from error
             raise
-        task = asyncio.create_task(self._watch(record))
-        self.monitors.add(task)
-        task.add_done_callback(self.monitors.discard)
+        finally:
+            record["delivery_ready"].set()
         return record["message"]
 
     def _withdraw(self, record, cause):
@@ -119,6 +140,24 @@ class ApprovalCards:
         withdraw = getattr(approval, "withdraw_gateway_approval", None)
         if withdraw:
             withdraw(session_key, request_id, cause)
+
+    @staticmethod
+    def _expired(card):
+        return datetime.now(timezone.utc) >= datetime.fromisoformat(card["expiresAt"])
+
+    @staticmethod
+    def _still_pending(record):
+        from tools.approval import list_gateway_approvals
+        return any(entry.get("request_id") == record["card"]["id"]
+                   for entry in list_gateway_approvals(record["session"]))
+
+    async def _cancel_delivery(self, record):
+        card = record["card"]
+        try:
+            await self.adapter._write({"type": "cancel-approval-delivery", "requestId": card["requestMessageId"],
+                                       "interactionId": card["id"]})
+        except (OSError, RuntimeError, asyncio.TimeoutError):
+            pass  # Bridge disconnect or the original deadline also stops retries.
 
     async def _settle(self, record, status, choice=None):
         if record["card"]["status"] != "pending":
@@ -132,31 +171,41 @@ class ApprovalCards:
                     "targetMessageId": record["message"], "interaction": record["card"]})
             except (RuntimeError, asyncio.TimeoutError):
                 pass  # The UI independently disables expired cards. Never retry a decision.
+        else:
+            record["delivery_ready"].set()
+            await self._cancel_delivery(record)
+
+    def _action_record(self, event):
+        record = self.records.get(str(event.get("interactionId", "")))
+        session, request = self.adapter._session, self.adapter._request
+        if not record or not session or not request:
+            return None
+        card = record["card"]
+        if (card["status"] == "pending" and str(event.get("senderIdentityId")) == card["ownerIdentityId"]
+                and str(session["ownerIdentityId"]) == card["ownerIdentityId"]
+                and event.get("conversationId") == record["chat"]
+                and event.get("requestMessageId") == request["requestId"] == card["requestMessageId"]
+                and event.get("targetMessageId") and event.get("action") in card["actions"]):
+            return record
+        return None
 
     async def handle(self, event):
         from tools import approval as gateway_approval
+        record = self._action_record(event)
+        if not record:
+            return
+        # The device may already have the card while the server's ACK is lost.
+        # Never authorize before the identical card's delivery is confirmed.
+        await record["delivery_ready"].wait()
         async with self.lock:
-            record = self.records.get(str(event.get("interactionId", "")))
-            session, request = self.adapter._session, self.adapter._request
-            if not record or not session or not request:
+            if self._action_record(event) is not record or record["message"] != event.get("targetMessageId"):
                 return
             card = record["card"]
-            if (card["status"] != "pending" or str(event.get("senderIdentityId")) != card["ownerIdentityId"]
-                    or str(session["ownerIdentityId"]) != card["ownerIdentityId"]
-                    or event.get("conversationId") != record["chat"]
-                    or event.get("requestMessageId") != card["requestMessageId"]
-                    or request["requestId"] != card["requestMessageId"]
-                    or not record["message"] or event.get("targetMessageId") != record["message"]
-                    or event.get("action") not in card["actions"]):
-                return
-            if datetime.now(timezone.utc) >= datetime.fromisoformat(card["expiresAt"]):
+            if self._expired(card):
                 self._withdraw(record, "timeout")
                 await self._settle(record, "expired")
                 return
-            def still_pending():
-                return any(entry.get("request_id") == card["id"]
-                           for entry in gateway_approval.list_gateway_approvals(record["session"]))
-            if not still_pending():
+            if not self._still_pending(record):
                 await self._settle(record, "closed")
                 return
             choice = event["action"]
@@ -173,18 +222,17 @@ class ApprovalCards:
                 count = gateway_approval.resolve_gateway_approval(record["session"], choice, request_id=card["id"])
             if count == 1:
                 await self._settle(record, "denied" if choice == "deny" else "approved", choice)
-            elif not still_pending():
+            elif not self._still_pending(record):
                 await self._settle(record, "closed")
 
     async def _watch(self, record):
-        from tools.approval import list_gateway_approvals
         while record["card"]["status"] == "pending":
             await asyncio.sleep(1)
             async with self.lock:
-                if datetime.now(timezone.utc) >= datetime.fromisoformat(record["card"]["expiresAt"]):
+                if self._expired(record["card"]):
                     self._withdraw(record, "timeout")
                     await self._settle(record, "expired")
-                elif not any(entry.get("request_id") == record["card"]["id"] for entry in list_gateway_approvals(record["session"])):
+                elif not self._still_pending(record):
                     await self._settle(record, "closed")
 
     async def close_request(self, request_id):
@@ -201,4 +249,6 @@ class ApprovalCards:
         for record in self.records.values():
             if record["card"]["status"] == "pending":
                 self._withdraw(record, "disconnected")
+                record["card"]["status"] = "closed"
+            record["delivery_ready"].set()
         self.records.clear()

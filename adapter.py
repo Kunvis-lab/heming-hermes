@@ -15,7 +15,7 @@ from gateway.platforms.event import MessageEvent, MessageType
 from hermes_constants import get_hermes_home
 
 from .setup import environment_defaults, interactive_setup, is_configured
-from .approval import ApprovalAlreadyPending, ApprovalCards
+from .approval import ApprovalAlreadyPending, ApprovalCards, ApprovalDeliveryClosed
 from .work import WorkCards
 from .managed_tasks import ManagedTasks
 
@@ -265,6 +265,8 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             return SendResult(success=True, message_id=message_id)
         except ApprovalAlreadyPending:
             return SendResult(success=False, error="HEMING_APPROVAL_ALREADY_PENDING")
+        except ApprovalDeliveryClosed:
+            return SendResult(success=False, error="HEMING_APPROVAL_TASK_CLOSED")
         except (ImportError, OSError, RuntimeError, TypeError, ValueError, asyncio.TimeoutError):
             if (request and self._request is request and session and self._session is session and
                     str(chat_id) == session["conversationId"] and not request.get("approvalDeliveryFailed")):
