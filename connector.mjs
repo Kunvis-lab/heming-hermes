@@ -4589,11 +4589,11 @@ function createAgentTransport({ origin = HEMING_ORIGIN, fetchImpl } = {}) {
     request.once("error", reject);
     request.end(options.body);
   }));
-  const api = async (path, { token: token4, body, method = body ? "POST" : "GET", signal, retainAgentReceipt } = {}) => {
+  const api = async (path, { token: token5, body, method = body ? "POST" : "GET", signal, retainAgentReceipt } = {}) => {
     if (!path.startsWith("/api/v1/")) throw Error("INVALID_AGENT_API_PATH");
     const response = await transportFetch(origin + path, { method, redirect: "error", headers: {
       "Content-Type": "application/json",
-      ...token4 ? { "x-device-token": token4 } : {},
+      ...token5 ? { "x-device-token": token5 } : {},
       ...retainAgentReceipt ? { "x-agent-envelope-receipt": "1" } : {}
     }, ...body ? { body: JSON.stringify(body) } : {}, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15e3)]) : AbortSignal.timeout(15e3) });
     const result = await response.json().catch((cause) => {
@@ -7357,6 +7357,14 @@ ${ref.body}`).join("\n\n---\n\n");
 
 // shared/agentWork.mjs
 var token2 = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
+var AGENT_COMMANDS = Object.freeze({
+  btw: { label: "\u987A\u4FBF\u95EE", hint: "\u5355\u72EC\u56DE\u7B54\uFF0C\u4E0D\u6253\u65AD\u4E3B\u4EFB\u52A1" },
+  steer: { label: "\u8865\u5145\u65B9\u5411", hint: "\u5728\u5F53\u524D\u4EFB\u52A1\u4E2D\u7EE7\u7EED" },
+  queue: { label: "\u52A0\u5165\u4E0B\u4E00\u8F6E", hint: "\u5F53\u524D\u4EFB\u52A1\u7ED3\u675F\u540E\u518D\u5904\u7406" }
+});
+var queueActions = ["queue", "queue-up", "queue-remove", "queue-resume"];
+var commandActions = ["btw", "steer", ...queueActions];
+var promptText = (value) => typeof value === "string" && !!value.trim() && value.length <= 2e3;
 var AGENT_TASK_LABELS = Object.freeze({ working: "\u6B63\u5728\u5904\u7406", waiting: "\u7B49\u5F85\u4F60\u7684\u8865\u5145", stopping: "\u6B63\u5728\u8BF7\u6C42\u505C\u6B62", completed: "\u5DF2\u5B8C\u6210", failed: "\u672C\u6B21\u5904\u7406\u672A\u5B8C\u6210", stopped: "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406" });
 function normalizeAgentDocument(value) {
   if (!value || value.version !== 1 || !token2(value.documentId) || typeof value.title !== "string" || !value.title.trim() || value.title.length > 80 || typeof value.body !== "string" || !value.body.trim() || value.body.length > 16384) throw Error("INVALID_AGENT_DOCUMENT");
@@ -7378,9 +7386,29 @@ function normalizeAgentWork(value) {
   };
   if (value.kind === "task") {
     if (!Object.hasOwn(AGENT_TASK_LABELS, value.status)) throw Error("INVALID_AGENT_TASK");
-    return { ...base, canStop: value.canStop === true };
+    const activity = value.activity;
+    if (activity !== void 0 && (!Array.isArray(activity) || activity.length > 12 || activity.some((line) => typeof line !== "string" || !line.trim() || line.length > 720)))
+      throw Error("INVALID_AGENT_ACTIVITY");
+    const taskCommands = value.taskCommands;
+    const queue = value.queue;
+    const commandReceipts = value.commandReceipts;
+    if (taskCommands !== void 0 && (!Array.isArray(taskCommands) || taskCommands.length > 3 || taskCommands.some((command2) => !Object.hasOwn(AGENT_COMMANDS, command2)) || new Set(taskCommands).size !== taskCommands.length))
+      throw Error("INVALID_AGENT_COMMANDS");
+    if (queue !== void 0 && (!Array.isArray(queue) || queue.length > 8 || queue.some((item) => !token2(item?.id) || !promptText(item.text)) || new Set(queue.map((item) => item.id)).size !== queue.length))
+      throw Error("INVALID_AGENT_QUEUE");
+    if (commandReceipts !== void 0 && (!Array.isArray(commandReceipts) || commandReceipts.length > 12 || commandReceipts.some((item) => !token2(item?.id) || !["accepted", "rejected"].includes(item.status)) || new Set(commandReceipts.map((item) => item.id)).size !== commandReceipts.length)) throw Error("INVALID_AGENT_COMMAND_RECEIPTS");
+    return {
+      ...base,
+      canStop: value.canStop === true,
+      ...activity?.length ? { activity: [...activity] } : {},
+      ...taskCommands ? { taskCommands: [...taskCommands] } : {},
+      ...queue ? { queue: queue.map(({ id: id2, text: text4 }) => ({ id: id2, text: text4 })) } : {},
+      ...value.queuePaused === true ? { queuePaused: true } : {},
+      ...promptText(value.queuedPrompt) ? { queuedPrompt: value.queuedPrompt } : {},
+      ...commandReceipts ? { commandReceipts: commandReceipts.map(({ id: id2, status }) => ({ id: id2, status })) } : {}
+    };
   }
-  if (!["pending", "answered", "closed"].includes(value.status) || typeof value.question !== "string" || !value.question.trim() || value.question.length > 2e3 || !Array.isArray(value.choices) || value.choices.length > 12 || value.choices.some((choice) => typeof choice !== "string" || !choice.trim() || choice.length > 500) || new Set(value.choices).size !== value.choices.length || !Number.isFinite(Date.parse(value.expiresAt)) || value.answer !== void 0 && (typeof value.answer !== "string" || !value.answer.trim() || value.answer.length > 2e3))
+  if (!["pending", "answered", "closed"].includes(value.status) || typeof value.question !== "string" || !value.question.trim() || value.question.length > (value.answerFormat === "choices-v1" ? 8100 : 2e3) || value.answerFormat !== void 0 && value.answerFormat !== "choices-v1" || !Array.isArray(value.choices) || value.choices.length > 12 || value.choices.some((choice) => typeof choice !== "string" || !choice.trim() || choice.length > (value.answerFormat === "choices-v1" ? 16100 : 500)) || value.choices.join("").length > 45e3 || new Set(value.choices).size !== value.choices.length || !Number.isFinite(Date.parse(value.expiresAt)) || value.answer !== void 0 && (typeof value.answer !== "string" || !value.answer.trim() || value.answer.length > 2e3))
     throw Error("INVALID_AGENT_QUESTION");
   return {
     ...base,
@@ -7388,19 +7416,41 @@ function normalizeAgentWork(value) {
     choices: [...value.choices],
     multiSelect: value.multiSelect === true,
     expiresAt: new Date(value.expiresAt).toISOString(),
-    ...value.answer ? { answer: value.answer } : {}
+    ...value.answer ? { answer: value.answer } : {},
+    ...value.answerFormat ? { answerFormat: value.answerFormat } : {}
   };
 }
 function normalizeAgentWorkAction(data) {
-  if (!data || !["task", "question"].includes(data.kind) || !token2(data.interactionId) || !token2(data.requestMessageId) || !token2(data.targetMessageId) || (data.kind === "task" ? data.action !== "stop" : data.action !== "answer" || typeof data.answer !== "string" || !data.answer.trim() || data.answer.length > 2e3)) throw Error("INVALID_AGENT_ACTION");
-  return {
+  const invalid = () => {
+    throw Error("INVALID_AGENT_ACTION");
+  };
+  if (!data || !["task", "question"].includes(data.kind) || !token2(data.interactionId) || !token2(data.requestMessageId) || !token2(data.targetMessageId)) invalid();
+  const base = {
     kind: data.kind,
     interactionId: data.interactionId,
     requestMessageId: data.requestMessageId,
     targetMessageId: data.targetMessageId,
-    action: data.action,
-    ...data.kind === "question" ? { answer: data.answer } : {}
+    action: data.action
   };
+  if (data.kind === "task") {
+    if (data.action === "stop") return base;
+    if (!commandActions.includes(data.action) || !token2(data.commandId)) invalid();
+    if (data.action === "queue-resume") return { ...base, commandId: data.commandId };
+    if (data.action === "queue-up" || data.action === "queue-remove") {
+      if (!token2(data.queueId)) invalid();
+      return { ...base, commandId: data.commandId, queueId: data.queueId };
+    }
+    if (!promptText(data.text) || data.action === "queue" && data.text.trim().startsWith("/")) invalid();
+    return { ...base, commandId: data.commandId, text: data.text.trim(), ...data.showInChat === true ? { showInChat: true } : {} };
+  }
+  if (data.action !== "answer") invalid();
+  if (typeof data.answer === "string") {
+    if (!promptText(data.answer)) invalid();
+    return { ...base, answer: data.answer };
+  }
+  const { selections, note } = data.answer || {};
+  if (!Array.isArray(selections) || selections.length > 12 || selections.some((index) => !Number.isInteger(index) || index < 0 || index > 11) || new Set(selections).size !== selections.length || typeof note !== "string" || note.length > 2e3 || !selections.length && !note.trim()) invalid();
+  return { ...base, answer: { selections: [...selections], note: note.trim() } };
 }
 function agentDocumentPrompt(document2, instruction) {
   const value = normalizeAgentDocument(document2);
@@ -7421,10 +7471,13 @@ function normalizeAgentReply(value) {
   if (!value || typeof value !== "object" || !STATES.has(value.state) || !Number.isSafeInteger(value.revision) || value.revision < 0 || value.revision > 1e5 || typeof value.requestMessageId !== "string" || !value.requestMessageId || value.requestMessageId.length > 128)
     throw Error("INVALID_AGENT_REPLY");
   if (value.presentation !== void 0 && value.presentation !== "answer") throw Error("INVALID_AGENT_REPLY_PRESENTATION");
+  if (value.artifact !== void 0 && (value.artifact !== "process" || value.state !== "completed"))
+    throw Error("INVALID_AGENT_ARTIFACT");
   return {
     state: value.state,
     revision: value.revision,
     requestMessageId: value.requestMessageId,
+    ...value.artifact === "process" ? { artifact: "process" } : {},
     ...value.presentation === "answer" ? { presentation: "answer" } : {}
   };
 }
@@ -7645,6 +7698,32 @@ function normalizeAgentManagedTasks(value) {
   return result;
 }
 
+// shared/agentSlash.mjs
+var token4 = (value) => typeof value === "string" && value.length > 0 && value.length <= 128;
+var namePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
+function agentSlashName(text4) {
+  return /^\/([a-z0-9][a-z0-9_-]{0,63})(?=\s|$)/iu.exec(typeof text4 === "string" ? text4 : "")?.[1].toLowerCase() || "";
+}
+function normalizeAgentSlash(value) {
+  if (value?.version !== 1 || value.targetRequestId != null && !token4(value.targetRequestId))
+    throw Error("INVALID_AGENT_SLASH");
+  return { version: 1, ...value.targetRequestId ? { targetRequestId: value.targetRequestId } : {} };
+}
+function normalizeAgentCommands(value) {
+  if (value?.version !== 1 || !token4(value.requestId)) throw Error("INVALID_AGENT_COMMANDS_REQUEST");
+  const base = { version: 1, requestId: value.requestId };
+  if (value.kind === "request") return { ...base, kind: "request" };
+  if (value.kind !== "catalog" || !token4(value.ownerIdentityId) || !Array.isArray(value.commands) || value.commands.length > 160)
+    throw Error("INVALID_AGENT_COMMAND_CATALOG");
+  const seen = /* @__PURE__ */ new Set();
+  const commands = value.commands.map((row) => {
+    if (!row || typeof row.name !== "string" || !namePattern.test(row.name) || seen.has(row.name) || typeof row.hint !== "string" || row.hint.length > 160 || !Array.isArray(row.aliases) || row.aliases.length > 8 || row.aliases.some((alias) => typeof alias !== "string" || !namePattern.test(alias))) throw Error("INVALID_AGENT_COMMAND_ENTRY");
+    seen.add(row.name);
+    return { name: row.name, hint: row.hint, aliases: row.aliases };
+  });
+  return { ...base, kind: "catalog", ownerIdentityId: value.ownerIdentityId, commands };
+}
+
 // shared/attachmentCrypto.mjs
 var encoder2 = new TextEncoder();
 var MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
@@ -7832,6 +7911,98 @@ function normalizeAgentInput(value) {
 function requireAgentInputAttachments(attachments) {
   if (!Array.isArray(attachments) || !attachments.length || attachments.length > MAX_ATTACHMENTS_PER_MESSAGE || new Set(attachments.map((item) => String(item.id))).size !== attachments.length || attachments.reduce((total, item) => total + Number(item.plainBytes), 0) > MAX_ATTACHMENT_BYTES)
     throw Error("INVALID_AGENT_INPUT_ATTACHMENTS");
+}
+
+// shared/linkPreview.mjs
+var LINK_PREVIEW_MAX_BYTES = 192 * 1024;
+var LINK_PREVIEW_COVER_BYTES = 48 * 1024;
+var LINK_PREVIEW_RICH_RESPONSE_BYTES = 8192 + 4 * Math.ceil(LINK_PREVIEW_COVER_BYTES / 3);
+function normalizePreviewCover(value) {
+  if (value?.version !== 2 || value.mimeType !== "image/jpeg" || value.chunkCount !== 1 || !/^[0-9a-f-]{36}$/iu.test(value.id || "") || !/^[A-Za-z0-9+/]{43}=$/u.test(value.key || "") || !/^[A-Za-z0-9+/]{11}=$/u.test(value.noncePrefix || "")) return null;
+  try {
+    const cover = normalizeAttachmentCore(value);
+    return cover.plainBytes <= LINK_PREVIEW_COVER_BYTES ? { ...cover, fileName: "link-cover.jpg", durationMs: 0 } : null;
+  } catch {
+    return null;
+  }
+}
+var TRACKING_QUERY = /^(?:utm_[a-z0-9_]{1,30}|fbclid|gclid|msclkid|wfr|for|spm|spm_id_from)$/u;
+var ACTION_PATH = /(?:^|[\W_])(?:login|logout|signin|signout|reset|unsubscribe|invite|verify|verification|captcha|confirm|token|callback|authorize|approve|accept|delete|remove|payment|checkout)(?:[\W_]|$)/iu;
+function publicContentParameter(url, key, value) {
+  if (url.hostname === "mp.weixin.qq.com" && url.pathname === "/s") {
+    if (key === "__biz") return /^[A-Za-z0-9_-]{4,128}={0,2}$/u.test(value);
+    if (key === "mid") return /^[0-9]{1,24}$/u.test(value);
+    if (key === "idx") return /^[1-9][0-9]{0,2}$/u.test(value);
+    return key === "sn" && /^[a-f0-9]{32}$/iu.test(value);
+  }
+  if (url.hostname === "baijiahao.baidu.com" && url.pathname === "/s")
+    return key === "id" && /^[0-9]{1,24}$/u.test(value);
+  if (["www.youtube.com", "m.youtube.com", "youtube.com"].includes(url.hostname) && url.pathname === "/watch")
+    return key === "v" && /^[A-Za-z0-9_-]{11}$/u.test(value);
+  return ["p", "page", "article_id", "post_id"].includes(key) && /^[0-9]{1,24}$/u.test(value);
+}
+function linkPreviewUrl(value) {
+  if (typeof value !== "string" || value.length > 2048 || /[\u0000-\u0020\u007f]/u.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.port || url.username || url.password || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*$/u.test(url.hostname) || /(?:^|\.)(?:localhost|local|internal|home|lan|onion|test|invalid|example)$/u.test(url.hostname) || ACTION_PATH.test(decodeURIComponent(url.pathname))) return null;
+    const content = new URLSearchParams();
+    for (const [key, value2] of url.searchParams) {
+      if (TRACKING_QUERY.test(key)) continue;
+      if (content.has(key) || !publicContentParameter(url, key, value2)) return null;
+      content.append(key, value2);
+    }
+    content.sort();
+    if (url.hostname === "mp.weixin.qq.com" && url.pathname === "/s" && ["__biz", "mid", "idx", "sn"].some((key) => !content.has(key))) return null;
+    url.search = content.toString();
+    url.hash = "";
+    return url;
+  } catch {
+    return null;
+  }
+}
+function browserPreviewUrl(value) {
+  if (typeof value !== "string" || value.length > 2048 || /[\u0000-\u0020\u007f]/u.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.port || url.username || url.password || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*$/u.test(url.hostname) || /(?:^|\.)(?:localhost|local|internal|home|lan|onion|test|invalid|example)$/u.test(url.hostname)) return null;
+    const decoded = decodeURIComponent(url.pathname + url.hash);
+    if (ACTION_PATH.test(decoded)) return null;
+    const secret = /(?:^|[_\W])(?:access.?token|refresh.?token|token|auth|authorization|password|passwd|pass.?ticket|ticket|secret|signature|sig|credential|session|jwt|api.?key|key|email|phone|code)(?:$|[_\W])/iu;
+    for (const [key, value2] of url.searchParams)
+      if (secret.test(key) || /^(?:action|do|cmd|command|redirect|redirect_uri|return_url|callback)$/iu.test(key) || ACTION_PATH.test(value2)) return null;
+    if (secret.test(url.hash.replace(/^#.*?\?/u, ""))) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+function normalizeLinkPreviewText(value, limit) {
+  if (typeof value !== "string") return "";
+  const text4 = value.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, " ").replace(/\s+/gu, " ").trim();
+  return Array.from(text4).slice(0, limit).join("");
+}
+function normalizeLinkPreview(value) {
+  if (!value || typeof value !== "object") return null;
+  const url = value.version === 2 ? browserPreviewUrl(value.url) : linkPreviewUrl(value.url);
+  if (!url) return null;
+  const title = normalizeLinkPreviewText(value.title, 180);
+  const description = normalizeLinkPreviewText(value.description, 360);
+  const cover = value.version === 2 && title ? normalizePreviewCover(value.cover) : null;
+  return title || description ? {
+    url: url.href,
+    title,
+    description,
+    ...value.version === 2 ? { version: 2 } : {},
+    ...cover ? { cover } : {}
+  } : null;
+}
+function normalizeLinkPreviewUpdate(value) {
+  if (!value || typeof value !== "object") return null;
+  const { targetMessageId, sourceEventId, sourceFingerprint } = value;
+  const preview = normalizeLinkPreview(value.preview);
+  if (!preview || ![targetMessageId, sourceEventId].every((id2) => typeof id2 === "string" && id2.length > 0 && id2.length <= 128) || typeof sourceFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(sourceFingerprint)) return null;
+  return { targetMessageId, sourceEventId, sourceFingerprint, preview };
 }
 
 // shared/groupHandoverContext.mjs
@@ -8365,9 +8536,19 @@ function validateData(type, value) {
       if (data.contentType !== "text" || data.whisper || data.ephemeral || data.agentWork || data.agentDocument || data.agentReply || data.agentInteraction || data.libraryDocument || data.forwardedFrom) throw Error("INVALID_HANDOVER_REFERENCE_MESSAGE");
       data.handoverReference = normalizeHandoverReference(data.handoverReference);
     }
+    if (data.agentSlash != null) {
+      if (data.contentType !== "text" || !agentSlashName(data.text) || data.attachments || data.attachment || data.forwardedFrom || data.replyTo || data.whisper || data.ephemeral || data.agentInput || data.agentWork || data.agentDocument || data.agentInteraction || data.agentReply || data.libraryDocument || data.handoverReference)
+        throw Error("INVALID_AGENT_SLASH_MESSAGE");
+      data.agentSlash = normalizeAgentSlash(data.agentSlash);
+    }
     if (data.agentInteraction) {
       if (data.contentType !== "text" || data.forwardedFrom || data.whisper || data.ephemeral || data.agentReply) throw Error("INVALID_AGENT_INTERACTION_MESSAGE");
       data.agentInteraction = normalizeAgentInteraction(data.agentInteraction);
+    }
+    if (Object.hasOwn(data, "linkPreview")) {
+      const preview = data.contentType === "text" && !data.whisper && !data.ephemeral && !data.agentWork && !data.agentInput && !data.agentInteraction && !data.agentSlash && !data.libraryDocument && normalizeLinkPreview(data.linkPreview);
+      if (preview) data.linkPreview = preview;
+      else delete data.linkPreview;
     }
   } else if (type === "agent.tasks") {
     return normalizeAgentManagedTasks(data);
@@ -8443,6 +8624,11 @@ function validateData(type, value) {
       throw new Error("INVALID_RECEIPT_TARGET");
   } else if (type === "typing") {
     data.active = Boolean(data.active);
+    if (Object.hasOwn(data, "linkPreviewUpdate")) {
+      const linkPreviewUpdate = normalizeLinkPreviewUpdate(data.linkPreviewUpdate);
+      return linkPreviewUpdate ? { active: false, linkPreviewUpdate } : { active: false };
+    }
+    if (data.agentCommands != null) return { active: false, agentCommands: normalizeAgentCommands(data.agentCommands) };
   } else if (type === "poll.vote") {
     data.pollId = requiredString(String(data.pollId || ""), "POLL_ID", 128);
     data.optionIds = normalizeMessageIds(data.optionIds);
@@ -8560,7 +8746,7 @@ function chatEventEnvelopeKind(type, data = {}) {
   if (type === "group.collaboration" && data.operation === "thread.recall") return "control";
   if (type === "group.collaboration") return collaborationEventNotifies({ type, data }) ? "group-collaboration" : "group-control";
   if (type.startsWith("receipt.")) return "receipt";
-  if (type === "typing") return "typing";
+  if (type === "typing") return data.agentCommands || data.linkPreviewUpdate ? "control" : "typing";
   if (type === "message.create") return "message";
   if (type === "message.delete" && data.scope === "everyone") return "message-delete";
   if (type.startsWith("group.")) return "group-control";
@@ -8625,7 +8811,7 @@ function streamError(code, cause) {
 var MAX_FRAME_CHARACTERS = 65536;
 async function listenToSse({
   url,
-  token: token4,
+  token: token5,
   onEvent,
   signal,
   connectTimeoutMs = 12e3,
@@ -8664,7 +8850,7 @@ async function listenToSse({
   try {
     const response = await fetchImpl(url, {
       redirect: "error",
-      headers: { ...headers, "x-device-token": token4 },
+      headers: { ...headers, "x-device-token": token5 },
       signal: controller2.signal
     });
     if (!response.ok || !response.body?.getReader)
@@ -9366,10 +9552,10 @@ function validateUnreadHint(value) {
     throw Error("INVALID_UNREAD_HINT");
   for (const tokens of [value.add, value.remove]) {
     if (!Array.isArray(tokens) || tokens.length > MAX_TOKENS || new Set(tokens).size !== tokens.length) throw Error("INVALID_UNREAD_HINT");
-    for (const token4 of tokens)
-      if (typeof token4 !== "string" || !HASH_PATTERN.test(token4)) throw Error("INVALID_UNREAD_HINT");
+    for (const token5 of tokens)
+      if (typeof token5 !== "string" || !HASH_PATTERN.test(token5)) throw Error("INVALID_UNREAD_HINT");
   }
-  if (value.add.some((token4) => value.remove.includes(token4))) throw Error("INVALID_UNREAD_HINT");
+  if (value.add.some((token5) => value.remove.includes(token5))) throw Error("INVALID_UNREAD_HINT");
   return { version: everyone ? 2 : 1, add: [...value.add], remove: [...value.remove], ...everyone ? { removeScope: "everyone" } : {} };
 }
 function unreadHintForPayload(conversationId, actorIdentityId, payload) {
@@ -9380,22 +9566,22 @@ function unreadHintForPayload(conversationId, actorIdentityId, payload) {
   let everyone = false;
   for (const event of events) {
     if (event?.type === "group.collaboration" && event.data?.operation === "thread.recall") {
-      const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data.replyId);
-      add.delete(token4);
-      remove.add(token4);
+      const token5 = unreadMessageToken(conversationId, actorIdentityId, event.data.replyId);
+      add.delete(token5);
+      remove.add(token5);
     } else if (collaborationEventNotifies(event)) {
       add.add(unreadMessageToken(conversationId, actorIdentityId, event.eventId));
     } else if (event?.type === "message.create") {
       if (event.data?.agentWork?.kind === "task") continue;
-      const token4 = unreadMessageToken(conversationId, actorIdentityId, event.data?.messageId);
-      remove.delete(token4);
-      add.add(token4);
+      const token5 = unreadMessageToken(conversationId, actorIdentityId, event.data?.messageId);
+      remove.delete(token5);
+      add.add(token5);
     } else if (event?.type === "message.delete") {
       const senderId = event.data?.scope === "everyone" ? event.data.targetSenderIdentityId : actorIdentityId;
       if (event.data?.scope === "everyone") everyone = true;
-      const token4 = unreadMessageToken(conversationId, senderId, event.data?.targetMessageId);
-      add.delete(token4);
-      remove.add(token4);
+      const token5 = unreadMessageToken(conversationId, senderId, event.data?.targetMessageId);
+      add.delete(token5);
+      remove.add(token5);
     }
   }
   if (!batch && !add.size && !remove.size && payload?.data?.agentWork?.kind !== "task" && payload?.type !== "agent.tasks" && payload?.type !== "group.collaboration") return void 0;
@@ -9873,6 +10059,7 @@ function createWorkDelivery({ channel, state, persist }) {
   };
   const owner = String(state.session.ownerIdentityId);
   const label = (card) => card.kind === "task" ? AGENT_TASK_LABELS[card.status] : card.question;
+  const queue = () => (state.inbox || []).filter((event) => event.queuedByCommand);
   async function publish(entry, next) {
     const card = normalizeAgentWork(next);
     entry.card = card;
@@ -9902,7 +10089,9 @@ function createWorkDelivery({ channel, state, persist }) {
         ownerIdentityId: owner,
         revision: 0,
         status: "working",
-        canStop: false
+        canStop: false,
+        ...job2.queuedPrompt ? { queuedPrompt: job2.queuedPrompt } : {},
+        ...queue().length && !state.pausedQueue ? { queue: queue().map((event) => ({ id: event.data.messageId, text: event.data.text })) } : {}
       });
     }),
     update: (requestId, update) => serial(async () => {
@@ -9910,8 +10099,17 @@ function createWorkDelivery({ channel, state, persist }) {
       if (!job2.work) throw Error("AGENT_TASK_UNSUPPORTED");
       const old = job2.work.card;
       if (["completed", "failed", "stopped"].includes(old.status)) return;
-      if (old.status === "stopping" && !["stopped", "failed", "completed"].includes(update.status)) return;
-      await publish(job2.work, { ...old, status: update.status, canStop: update.canStop === true, revision: old.revision + 1 });
+      if (old.status === "stopping" && update.status && !["stopped", "failed", "completed"].includes(update.status)) return;
+      const activity = update.activity ?? old.activity;
+      if (update.status === void 0 && JSON.stringify(activity) === JSON.stringify(old.activity)) return;
+      await publish(job2.work, {
+        ...old,
+        status: update.status ?? old.status,
+        canStop: update.canStop ?? old.canStop,
+        activity,
+        taskCommands: (update.taskCommands ?? old.taskCommands)?.filter((name) => name !== "queue" || !state.pausedQueue),
+        revision: old.revision + 1
+      });
     }),
     question: (requestId, value, targetMessageId) => serial(async () => {
       const job2 = active(requestId);
@@ -9921,7 +10119,7 @@ function createWorkDelivery({ channel, state, persist }) {
       if (!entry) {
         if (card.status !== "pending" || card.revision !== 0 || targetMessageId || Object.keys(job2.questions).length >= 64) throw Error("AGENT_QUESTION_CLOSED");
         entry = job2.questions[card.id] = { messageId: crypto.randomUUID(), created: false };
-      } else if (entry.messageId !== targetMessageId || entry.card.status !== "pending" || card.revision <= entry.card.revision || card.status === "pending" || card.question !== entry.card.question || card.expiresAt !== entry.card.expiresAt || card.multiSelect !== entry.card.multiSelect || JSON.stringify(card.choices) !== JSON.stringify(entry.card.choices)) throw Error("AGENT_QUESTION_CLOSED");
+      } else if (entry.messageId !== targetMessageId || entry.card.status !== "pending" || card.revision <= entry.card.revision || card.status === "pending" || card.question !== entry.card.question || card.expiresAt !== entry.card.expiresAt || card.multiSelect !== entry.card.multiSelect || card.answerFormat !== entry.card.answerFormat || JSON.stringify(card.choices) !== JSON.stringify(entry.card.choices)) throw Error("AGENT_QUESTION_CLOSED");
       return publish(entry, card);
     }),
     accepts(action) {
@@ -9929,15 +10127,74 @@ function createWorkDelivery({ channel, state, persist }) {
       if (!job2?.work || action.requestMessageId !== job2.requestMessageId) return false;
       const entry = action.kind === "task" ? job2.work : job2.questions?.[action.interactionId];
       if (!entry || entry.messageId !== action.targetMessageId || entry.card.id !== action.interactionId) return false;
-      if (action.kind === "task") return entry.card.canStop && ["working", "waiting"].includes(entry.card.status);
+      if (action.kind === "task") {
+        if (!action.commandId) return entry.card.canStop && ["working", "waiting"].includes(entry.card.status);
+        const name = action.action.startsWith("queue-") ? "queue" : action.action;
+        return entry.card.status === "working" && entry.card.taskCommands?.includes(name) && (name !== "queue" || !state.pausedQueue) && !entry.card.commandReceipts?.some((receipt) => receipt.id === action.commandId);
+      }
       return entry.card.status === "pending" && Date.parse(entry.card.expiresAt) > Date.now();
     },
+    command: (action, authorized) => serial(async () => {
+      const job2 = state.job, entry = job2?.work;
+      if (!entry || job2.requestMessageId !== action.requestMessageId || !["working", "waiting"].includes(entry.card.status) || entry.card.commandReceipts?.some((receipt) => receipt.id === action.commandId)) return;
+      let accepted = authorized && entry.card.status === "working";
+      if (accepted && action.action === "queue") {
+        const id2 = `queue:${action.commandId}`;
+        accepted = queue().length < 8 && !queue().some((event) => event.data.messageId === id2);
+        if (accepted) state.inbox.push({
+          queuedByCommand: true,
+          data: { messageId: id2, contentType: "text", text: action.text }
+        });
+      } else if (accepted && ["queue-up", "queue-remove"].includes(action.action)) {
+        const pending = queue();
+        const index = pending.findIndex((event) => event.data.messageId === action.queueId);
+        accepted = index >= (action.action === "queue-up" ? 1 : 0);
+        if (accepted) {
+          const at = state.inbox.indexOf(pending[index]);
+          if (action.action === "queue-remove") state.inbox.splice(at, 1);
+          else {
+            const before = state.inbox.indexOf(pending[index - 1]);
+            [state.inbox[before], state.inbox[at]] = [state.inbox[at], state.inbox[before]];
+          }
+        }
+      }
+      await publish(entry, {
+        ...entry.card,
+        revision: entry.card.revision + 1,
+        queue: queue().map((event) => ({ id: event.data.messageId, text: event.data.text })),
+        commandReceipts: [
+          ...entry.card.commandReceipts || [],
+          { id: action.commandId, status: accepted ? "accepted" : "rejected" }
+        ].slice(-12)
+      });
+    }),
+    resume: (action) => serial(async () => {
+      const entry = state.pausedQueue;
+      if (!entry || entry.card.id !== action.interactionId || entry.card.requestMessageId !== action.requestMessageId || entry.messageId !== action.targetMessageId || !entry.card.queuePaused) return;
+      await publish({ ...entry }, {
+        ...entry.card,
+        revision: entry.card.revision + 1,
+        queuePaused: false,
+        commandReceipts: [...entry.card.commandReceipts || [], { id: action.commandId, status: "accepted" }].slice(-12)
+      });
+      state.pausedQueue = null;
+      persist();
+    }),
     finish: (job2) => serial(async () => {
       if (!job2.work) return;
       for (const entry of Object.values(job2.questions || {})) if (entry.card.status === "pending")
         await publish(entry, { ...entry.card, status: "closed", revision: entry.card.revision + 1 });
-      if (!["completed", "failed", "stopped"].includes(job2.work.card.status))
-        await publish(job2.work, { ...job2.work.card, status: job2.finalStatus, canStop: false, revision: job2.work.card.revision + 1 });
+      if (!["completed", "failed", "stopped"].includes(job2.work.card.status)) {
+        const paused = job2.finalStatus === "stopped" && !state.pausedQueue && queue().length > 0;
+        if (paused) state.pausedQueue = job2.work;
+        await publish(job2.work, {
+          ...job2.work.card,
+          status: job2.finalStatus,
+          canStop: false,
+          ...paused ? { queuePaused: true } : {},
+          revision: job2.work.card.revision + 1
+        });
+      }
     })
   };
 }
@@ -9975,7 +10232,7 @@ function createManagedTaskDelivery({ state, persist, channel, onRequest }) {
 import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { basename, isAbsolute, resolve as resolve2, sep } from "node:path";
+import { basename, extname, isAbsolute, resolve as resolve2, sep } from "node:path";
 
 // shared/attachmentRequest.mjs
 function attachmentAbortError() {
@@ -10048,14 +10305,14 @@ async function runWorkers(concurrency, signal, worker) {
     signal?.removeEventListener("abort", abort);
   }
 }
-async function jsonRequest(fetchImpl, url, token4, options = {}) {
+async function jsonRequest(fetchImpl, url, token5, options = {}) {
   return attachmentRequest(async (signal) => {
     const response = await fetchImpl(url, {
       redirect: "error",
       method: options.method || "GET",
       signal,
       headers: {
-        "x-device-token": token4,
+        "x-device-token": token5,
         ...options.body ? { "content-type": "application/json" } : {},
         ...options.headers || {}
       },
@@ -10075,7 +10332,7 @@ async function readJsonResponse(response) {
 async function putPartWithRetry({
   fetchImpl,
   url,
-  token: token4,
+  token: token5,
   digest,
   bytes,
   signal,
@@ -10091,7 +10348,7 @@ async function putPartWithRetry({
           method: "PUT",
           signal: requestSignal,
           headers: {
-            "x-device-token": token4,
+            "x-device-token": token5,
             "content-type": "application/octet-stream",
             "x-attachment-part-digest": digest
           },
@@ -10110,7 +10367,7 @@ async function putPartWithRetry({
 async function resolveUpload({
   fetchImpl,
   baseUrl,
-  token: token4,
+  token: token5,
   conversationId,
   file,
   resume,
@@ -10124,7 +10381,7 @@ async function resolveUpload({
       const status = await jsonRequest(
         fetchImpl,
         `${baseUrl}/api/v1/attachments/${resume.uploadId}/upload`,
-        token4,
+        token5,
         { signal, timeoutMs }
       );
       return {
@@ -10140,7 +10397,7 @@ async function resolveUpload({
   const initiated = await jsonRequest(
     fetchImpl,
     `${baseUrl}/api/v1/conversations/${conversationId}/attachments/multipart`,
-    token4,
+    token5,
     {
       method: "POST",
       signal,
@@ -10157,7 +10414,7 @@ async function resolveUpload({
 }
 async function uploadEncryptedAttachmentMultipart({
   baseUrl,
-  token: token4,
+  token: token5,
   conversationId,
   file,
   signal,
@@ -10173,7 +10430,7 @@ async function uploadEncryptedAttachmentMultipart({
   const upload = await resolveUpload({
     fetchImpl,
     baseUrl,
-    token: token4,
+    token: token5,
     conversationId,
     file,
     resume,
@@ -10210,7 +10467,7 @@ async function uploadEncryptedAttachmentMultipart({
         await putPartWithRetry({
           fetchImpl,
           url: `${baseUrl}/api/v1/attachments/${upload.uploadId}/parts/${index}`,
-          token: token4,
+          token: token5,
           digest: encrypted.descriptor.digest,
           bytes: encrypted.cipherBytes,
           signal: signal2,
@@ -10231,7 +10488,7 @@ async function uploadEncryptedAttachmentMultipart({
   await jsonRequest(
     fetchImpl,
     `${baseUrl}/api/v1/attachments/${upload.uploadId}/complete`,
-    token4,
+    token5,
     {
       method: "POST",
       signal,
@@ -10243,7 +10500,7 @@ async function uploadEncryptedAttachmentMultipart({
 }
 async function downloadEncryptedAttachmentMultipart({
   baseUrl,
-  token: token4,
+  token: token5,
   attachment,
   signal,
   onProgress,
@@ -10268,7 +10525,7 @@ async function downloadEncryptedAttachmentMultipart({
       const cipher = await attachmentRequest(async (requestSignal) => {
         const response = await fetchImpl(
           `${baseUrl}/api/v1/attachments/${attachment.id}/parts/${index}`,
-          { headers: { "x-device-token": token4 }, signal: requestSignal, redirect: "error" }
+          { headers: { "x-device-token": token5 }, signal: requestSignal, redirect: "error" }
         );
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
@@ -10304,6 +10561,13 @@ var fail3 = (code) => {
   throw Error(code);
 };
 var inside = (path, root) => path === root || path.startsWith(root + sep);
+var binaryType = "application/octet-stream";
+function finalVideoMime(fileName, bytes) {
+  const suffix = extname(fileName).toLowerCase();
+  if (suffix === ".mp4" && bytes.length >= 16 && bytes.toString("ascii", 4, 8) === "ftyp" && bytes.readUInt32BE(0) >= 16 && bytes.readUInt32BE(0) <= bytes.length && /^(isom|iso[2-9]|mp4[12]|avc1|dash|M4V )$/.test(bytes.toString("ascii", 8, 12))) return "video/mp4";
+  if (suffix === ".webm" && bytes.length >= 12 && bytes.readUInt32BE(0) === 440786851 && bytes.subarray(4, 64).includes(Buffer.from([66, 130, 132, 119, 101, 98, 109]))) return "video/webm";
+  return binaryType;
+}
 async function readArtifact(path, protectedPaths) {
   if (typeof path !== "string" || path.length > 4096 || !isAbsolute(path) || path.includes("\0")) fail3("AGENT_FILE_PATH_INVALID");
   const canonical = await realpath(path);
@@ -10330,7 +10594,7 @@ async function readArtifact(path, protectedPaths) {
     }
     const after = await handle.stat();
     if (before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) fail3("AGENT_FILE_CHANGED");
-    return { bytes, mimeType: "application/octet-stream", digest: createHash("sha256").update(bytes).digest("hex") };
+    return { bytes, digest: createHash("sha256").update(bytes).digest("hex") };
   } finally {
     await handle.close();
   }
@@ -10356,7 +10620,8 @@ function createFileDelivery({ channel, transport, state, persist, protectedPaths
       if (entry.sourceDigest && entry.sourceDigest !== artifact.digest) fail3("AGENT_FILE_CHANGED");
       entry.sourceDigest = artifact.digest;
       persist();
-      const file = new File([artifact.bytes], entry.fileName, { type: artifact.mimeType });
+      const type = entry.mediaKind === "video" ? finalVideoMime(entry.fileName, artifact.bytes) : binaryType;
+      const file = new File([artifact.bytes], entry.fileName, { type });
       artifact.bytes.fill(0);
       const stored = await uploadEncryptedAttachmentMultipart({
         baseUrl: transport.origin,
@@ -10381,15 +10646,20 @@ function createFileDelivery({ channel, transport, state, persist, protectedPaths
     });
     entry.event ||= createChatEvent("message.create", {
       messageId: entry.messageId,
-      contentType: "file",
+      contentType: entry.attachment.mimeType.startsWith("video/") ? "video" : "file",
       text: entry.caption,
       attachments: [entry.attachment],
-      ...entry.requestId ? { agentReply: { requestMessageId: entry.requestId, revision: 0, state: "completed" } } : {}
+      ...entry.requestId ? { agentReply: {
+        requestMessageId: entry.requestId,
+        revision: 0,
+        state: "completed",
+        ...entry.artifact === "process" ? { artifact: "process" } : {}
+      } } : {}
     }, { eventId: entry.messageId });
     persist();
     await channel.send(entry.event);
     entry.delivered = true;
-    if (state.job?.requestMessageId === entry.requestId) {
+    if (entry.artifact !== "process" && state.job?.requestMessageId === entry.requestId) {
       state.job.fileMessageIds = [.../* @__PURE__ */ new Set([...state.job.fileMessageIds || [], entry.messageId])];
     }
     delete entry.path;
@@ -10404,7 +10674,12 @@ function createFileDelivery({ channel, transport, state, persist, protectedPaths
       if (input.conversationId !== state.session.conversationId) fail3("AGENT_RECIPIENT_MISMATCH");
       if (typeof input.deliveryId !== "string" || !/^[a-zA-Z0-9_-]{16,128}$/.test(input.deliveryId)) fail3("AGENT_FILE_DELIVERY_ID_INVALID");
       if (input.requestId && state.job?.requestMessageId !== input.requestId) fail3("AGENT_TASK_CLOSED");
-      const inputDigest = createHash("sha256").update(JSON.stringify([input.filePath, input.fileName || "", input.caption || "", input.requestId || ""])).digest("hex");
+      if (input.artifact !== void 0 && (input.artifact !== "process" || !input.requestId)) fail3("INVALID_AGENT_ARTIFACT");
+      if (input.mediaKind !== void 0 && (input.mediaKind !== "video" || input.artifact)) fail3("INVALID_AGENT_MEDIA_KIND");
+      const identity = [input.filePath, input.fileName || "", input.caption || "", input.requestId || ""];
+      if (input.artifact) identity.push(input.artifact);
+      if (input.mediaKind) identity.push(input.mediaKind);
+      const inputDigest = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
       let entry = state.fileDeliveries[input.deliveryId];
       let prepared;
       if (!entry) {
@@ -10418,6 +10693,8 @@ function createFileDelivery({ channel, transport, state, persist, protectedPaths
           sourceDigest: artifact.digest,
           messageId: crypto.randomUUID(),
           requestId: input.requestId || "",
+          ...input.artifact ? { artifact: input.artifact } : {},
+          ...input.mediaKind ? { mediaKind: input.mediaKind } : {},
           caption: String(input.caption || "").slice(0, 16384)
         };
         state.fileDeliveries[input.deliveryId] = entry;
@@ -10770,10 +11047,25 @@ function createInboundFiles({ directory, transport, channel, state, persist, now
 }
 
 // integrations/heming-agent/connector.mjs
-function createAgentConnector({ transport, store, onMessage, onAction = () => {
-}, onTaskRequest = () => {
-}, onStatus = () => {
-}, taskTimeoutMs = 6e5, taskInteractions = false, streamReplies = false, protectedPaths = [], invitationRoot, receivedDirectory }) {
+function createAgentConnector({
+  transport,
+  store,
+  onMessage,
+  onAction = () => {
+  },
+  onTaskRequest = () => {
+  },
+  onSlash,
+  onCommandCatalog,
+  onStatus = () => {
+  },
+  taskTimeoutMs = 6e5,
+  taskInteractions = false,
+  streamReplies = false,
+  protectedPaths = [],
+  invitationRoot,
+  receivedDirectory
+}) {
   const state = store.read();
   if (!state?.session?.token) throw Error("AGENT_PAIRING_REQUIRED");
   state.inbox ||= [];
@@ -10794,13 +11086,25 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
   let activeDrain = null;
   let started = false;
   let timer;
+  let connectionSignal;
+  const pendingCommands = /* @__PURE__ */ new Map();
+  const nativeTurns = [];
+  const nativeAdoptions = /* @__PURE__ */ new Map();
+  const owner = () => ({ conversationId: state.session.conversationId, senderIdentityId: state.session.ownerIdentityId });
   async function execute(event, signal) {
-    const job2 = { requestMessageId: event.data.messageId, replyId: crypto.randomUUID(), revision: 0, text: "", created: false };
+    const job2 = {
+      requestMessageId: event.data.messageId,
+      replyId: crypto.randomUUID(),
+      revision: 0,
+      text: "",
+      created: false,
+      ...event.queuedByCommand ? { queuedPrompt: event.data.text } : {}
+    };
     state.job = job2;
     persist();
     const deadline = AbortSignal.timeout(taskTimeoutMs);
     const inputCancel = new AbortController();
-    taskSignal = AbortSignal.any([...signal ? [signal] : [], deadline, inputCancel.signal]);
+    taskSignal = AbortSignal.any([...signal ? [signal] : [], ...event.nativeTurn ? [event.nativeTurn.controller.signal] : [], deadline, inputCancel.signal]);
     const hasFiles = Boolean(event.data.attachments?.length || event.data.attachment);
     let filesPrepared = !hasFiles;
     try {
@@ -10825,6 +11129,8 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
         text: event.data.agentInput?.document || event.data.agentDocument ? agentDocumentPrompt(event.data.agentInput?.document || event.data.agentDocument, event.data.agentInput?.instruction || event.data.text) : event.data.agentInput?.instruction || event.data.text,
         contentType: event.data.contentType,
         attachments: inputFiles,
+        ...onSlash && event.data.agentSlash ? { slash: true } : {},
+        nativeTurn: event.nativeTurn,
         conversationId: state.session.conversationId,
         senderIdentityId: state.session.ownerIdentityId,
         signal: taskSignal,
@@ -10859,11 +11165,13 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
       delivery.prepare(job2, text4, "completed");
     } catch (error) {
       const stopped = error.message === "AGENT_TASK_STOPPED" || taskSignal.aborted && taskSignal.reason?.message === "AGENT_TASK_STOPPED";
-      const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === APPROVAL_DELIVERY_FAILURE.code ? APPROVAL_DELIVERY_FAILURE.text : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u6682\u4E0D\u652F\u6301\u8FD9\u7C7B\u9644\u4EF6\uFF0C\u8BF7\u66F4\u65B0\u63D2\u4EF6\u540E\u91CD\u8BD5\u3002" : !filesPrepared || error.message.startsWith("AGENT_ATTACHMENT_") || error.message.startsWith("ATTACHMENT_") || error.message.startsWith("INVALID_ATTACHMENT") ? "\u9644\u4EF6\u672A\u80FD\u5B8C\u6574\u8BFB\u53D6\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u662F\u5426\u8FC7\u671F\u3001\u5927\u5C0F\u662F\u5426\u8D85\u8FC7\u5355\u6B21100MB\uFF0C\u6216\u66F4\u65B0\u914D\u5957\u670D\u52A1\u540E\u91CD\u65B0\u53D1\u9001\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
+      const explanation = stopped ? "\u5DF2\u505C\u6B62\u7EE7\u7EED\u5904\u7406\uFF0C\u5DF2\u7ECF\u6267\u884C\u7684\u64CD\u4F5C\u4E0D\u4F1A\u64A4\u9500\u3002" : error.message === APPROVAL_DELIVERY_FAILURE.code ? APPROVAL_DELIVERY_FAILURE.text : error.message === "AGENT_QUESTION_DELIVERY_FAILED" ? "\u8FFD\u95EE\u672A\u80FD\u9001\u8FBE\uFF0C\u672C\u6B21\u4EFB\u52A1\u672A\u5B8C\u6210\u3002" : error.message === "AGENT_EPHEMERAL_UNSUPPORTED" ? "\u667A\u80FD\u4F53\u4E0D\u5904\u7406\u6084\u6084\u8BDD\uFF0C\u8BF7\u5728\u666E\u901A\u804A\u5929\u4E2D\u53D1\u9001\u3002" : error.message === "AGENT_MEDIA_UNSUPPORTED" ? "\u5F53\u524D\u667A\u80FD\u4F53\u8FDE\u63A5\u6682\u4E0D\u652F\u6301\u8FD9\u7C7B\u9644\u4EF6\uFF0C\u8BF7\u66F4\u65B0\u63D2\u4EF6\u540E\u91CD\u8BD5\u3002" : !filesPrepared || error.message.startsWith("AGENT_ATTACHMENT_") || error.message.startsWith("ATTACHMENT_") || error.message.startsWith("INVALID_ATTACHMENT") ? "\u9644\u4EF6\u672A\u80FD\u5B8C\u6574\u8BFB\u53D6\uFF0C\u8BF7\u68C0\u67E5\u6587\u4EF6\u662F\u5426\u8FC7\u671F\u3001\u5927\u5C0F\u662F\u5426\u8D85\u8FC7\u5355\u6B21100MB\uFF0C\u6216\u66F4\u65B0\u914D\u5957\u670D\u52A1\u540E\u91CD\u65B0\u53D1\u9001\u3002" : "\u672C\u6B21\u56DE\u590D\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002";
       delivery.prepare(job2, explanation, stopped ? "stopped" : "failed");
       onStatus("task-failed");
     }
     await delivery.finish(job2);
+    for (const [id2, action] of pendingCommands) if (action.requestMessageId === job2.requestMessageId) pendingCommands.delete(id2);
+    if (event.nativeTurn) nativeAdoptions.delete(event.data.messageId);
     taskSignal = null;
   }
   async function sync(signal) {
@@ -10879,34 +11187,58 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
           if (!state.processed.includes(envelope.clientMessageId)) {
             const events = normalizeChatPayload(await channel.decrypt(envelope), envelope);
             const actions2 = [];
+            const bridgeEvents = [];
             for (const event of events) {
+              if (event.type === "typing" && event.data.agentCommands) {
+                const request = event.data.agentCommands;
+                if (onCommandCatalog && request.kind === "request") bridgeEvents.push(() => onCommandCatalog({ ...request, ...owner() }));
+                continue;
+              }
               if (event.type === "agent.tasks") {
                 managedTasks.enqueue(event);
                 continue;
               }
               if (event.type === "agent.action") {
                 if (!state.handledMessages.includes(event.eventId)) {
-                  if (!event.data.kind || work.accepts(event.data)) {
+                  if (event.data.kind === "task" && event.data.action === "queue-resume") {
+                    actions2.push(event);
+                  } else if (!event.data.kind || work.accepts(event.data)) {
                     if (event.data.kind === "task" && event.data.action === "stop" && preparingInput?.requestId === event.data.requestMessageId)
                       preparingInput.controller.abort(Error("AGENT_TASK_STOPPED"));
-                    else actions2.push(event);
+                    else if (!event.data.commandId || !pendingCommands.has(event.data.commandId) && pendingCommands.size < 12) {
+                      if (event.data.commandId) pendingCommands.set(event.data.commandId, event.data);
+                      actions2.push(event);
+                    }
                   }
                   state.handledMessages = [...state.handledMessages, event.eventId].slice(-4096);
                 }
                 continue;
               }
               if (event.type !== "message.create" || state.handledMessages.includes(event.data.messageId)) continue;
-              state.inbox.push(event);
+              const slash = onSlash && event.data.agentSlash;
+              if (slash && (slash.targetRequestId || state.job && !state.job.finalStatus)) {
+                const input = {
+                  ...owner(),
+                  requestId: event.data.messageId,
+                  text: event.data.text,
+                  targetRequestId: slash.targetRequestId || ""
+                };
+                bridgeEvents.push(() => onSlash(input));
+              } else state.inbox.push(event);
               state.handledMessages = [...state.handledMessages, event.data.messageId].slice(-4096);
             }
             state.processed = [...state.processed, envelope.clientMessageId].slice(-4096);
             persist();
-            for (const action of actions2) await onAction({
-              ...action.data,
-              eventId: action.eventId,
-              conversationId: state.session.conversationId,
-              senderIdentityId: state.session.ownerIdentityId
-            });
+            for (const emit2 of bridgeEvents) emit2();
+            for (const action of actions2) {
+              if (action.data.kind === "task" && action.data.action === "queue-resume") await work.resume(action.data);
+              else await onAction({
+                ...action.data,
+                eventId: action.eventId,
+                conversationId: state.session.conversationId,
+                senderIdentityId: state.session.ownerIdentityId
+              });
+            }
           }
           await channel.request(`/api/v1/envelopes/${envelope.id}`, { method: "PATCH", body: { status: "read" }, signal });
         }
@@ -10918,10 +11250,21 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     await managedTasks.flush();
     await incoming?.flush(signal);
     if (!activeDrain) await files.flush(signal);
+    return drain(signal);
+  }
+  function drain(signal) {
     if (!activeDrain) activeDrain = (async () => {
       if (state.job) await delivery.finish(state.job);
-      while (state.inbox.length && !signal?.aborted) {
-        const event = state.inbox.shift();
+      while ((nativeTurns.length || state.inbox.length) && !signal?.aborted) {
+        if (nativeTurns.length) {
+          const turn = nativeTurns.shift();
+          if (!turn.nativeTurn.controller.signal.aborted) await execute(turn, signal);
+          continue;
+        }
+        const slashAt = onSlash ? state.inbox.findIndex((event2) => event2.data.agentSlash) : -1;
+        const at = slashAt >= 0 ? slashAt : state.pausedQueue ? state.inbox.findIndex((event2) => !event2.queuedByCommand) : 0;
+        if (at < 0) break;
+        const [event] = state.inbox.splice(at, 1);
         await execute(event, signal);
       }
     })().finally(() => {
@@ -10929,9 +11272,22 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     });
     return activeDrain;
   }
+  function adoptNativeTurn(event) {
+    if (!onSlash || nativeTurns.length >= 12 || event.conversationId !== state.session.conversationId || typeof event.requestId !== "string" || !/^[0-9a-f-]{36}$/i.test(event.requestId) || state.job?.requestMessageId === event.requestId || nativeTurns.some((turn) => turn.data.messageId === event.requestId))
+      throw Error("AGENT_NATIVE_TURN_UNAVAILABLE");
+    const nativeTurn = { nonce: event.nonce, controller: new AbortController() };
+    nativeAdoptions.set(event.requestId, nativeTurn);
+    nativeTurns.push({ data: { messageId: event.requestId, text: "" }, nativeTurn });
+    void drain(connectionSignal).catch(() => onStatus("reconnecting"));
+  }
+  function cancelNativeTurn(requestId) {
+    nativeAdoptions.get(requestId)?.controller.abort(Error("AGENT_NATIVE_TURN_UNAVAILABLE"));
+    nativeAdoptions.delete(requestId);
+  }
   async function start(signal) {
     if (started) throw Error("AGENT_ALREADY_STARTED");
     started = true;
+    connectionSignal = signal;
     try {
       store.lock?.();
     } catch (error) {
@@ -10992,8 +11348,36 @@ function createAgentConnector({ transport, store, onMessage, onAction = () => {
     await channel.send(createChatEvent("message.create", { messageId: id2, contentType: "text", text: text4 }, { eventId: id2 }));
     return id2;
   }
+  async function finishTaskCommand({ requestId, commandId, accepted }) {
+    const action = pendingCommands.get(commandId);
+    if (!action || action.requestMessageId !== requestId) return;
+    pendingCommands.delete(commandId);
+    return work.command(action, accepted === true);
+  }
+  async function sendSideReply(id2, text4) {
+    if (typeof id2 !== "string" || !/^[a-f0-9-]{36}$/i.test(id2)) throw Error("INVALID_SIDE_REPLY_ID");
+    const messageId = `btw:${id2}`;
+    await channel.send(createChatEvent("message.create", { messageId, contentType: "text", text: text4 }, { eventId: messageId }));
+    return messageId;
+  }
+  async function sendSlashReply(id2, part, text4) {
+    if (typeof id2 !== "string" || !/^[a-f0-9-]{36}$/i.test(id2) || !Number.isInteger(part) || part < 0 || part > 127)
+      throw Error("INVALID_AGENT_SLASH_REPLY");
+    const messageId = `slash:${id2}:${part}`;
+    await channel.send(createChatEvent("message.create", { messageId, text: text4 }, { eventId: messageId }));
+    return messageId;
+  }
+  async function sendCommandCatalog(requestId, commands) {
+    await channel.send(createChatEvent("typing", { active: false, agentCommands: {
+      version: 1,
+      kind: "catalog",
+      requestId,
+      ownerIdentityId: String(state.session.ownerIdentityId),
+      commands
+    } }));
+  }
   const sendFile = (input) => files.send(input, input.requestId && taskSignal ? AbortSignal.any([taskSignal, AbortSignal.timeout(3e5)]) : AbortSignal.timeout(3e5));
-  return { start, sync, sendText, sendFile, sendManagedTasks: managedTasks.publish, sendInteraction: interactions.send, session: state.session };
+  return { start, sync, adoptNativeTurn, cancelNativeTurn, sendText, sendSideReply, sendSlashReply, sendCommandCatalog, finishTaskCommand, sendFile, sendManagedTasks: managedTasks.publish, sendInteraction: interactions.send, session: state.session };
 }
 
 // integrations/heming-agent/stdioBridge.mjs
@@ -11034,10 +11418,26 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
       const event = JSON.parse(line);
       if (event.type === "send" && connector && typeof event.text === "string" && event.text.length <= 16384) {
         if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
-        void connector.sendText(event.text).then(
+        const send = event.slashReplyId ? connector.sendSlashReply(event.slashReplyId, event.part, event.text) : event.sideReplyId ? connector.sendSideReply(event.sideReplyId, event.text) : connector.sendText(event.text);
+        void send.then(
           (id2) => emit2({ type: "sent", nonce: event.nonce, messageId: id2 }),
           () => emit2({ type: "send-failed", nonce: event.nonce })
         );
+      } else if (event.type === "command-catalog" && connector) {
+        if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
+        void connector.sendCommandCatalog(event.requestId, event.commands).catch(() => {
+        });
+      } else if (event.type === "adopt-native-turn" && connector) {
+        try {
+          connector.adoptNativeTurn(event);
+        } catch {
+          emit2({ type: "send-failed", nonce: event.nonce });
+        }
+      } else if (event.type === "cancel-native-turn" && connector) {
+        connector.cancelNativeTurn(event.requestId);
+      } else if (event.type === "task-command-result" && connector) {
+        void connector.finishTaskCommand(event).catch(() => {
+        });
       } else if (event.type === "send-file" && connector) {
         if (event.conversationId !== connector.session.conversationId) throw Error("AGENT_RECIPIENT_MISMATCH");
         void connector.sendFile(event).then(
@@ -11064,7 +11464,7 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
         if (event.type === "snapshot" && typeof event.text === "string") active.feed.snapshot(event.text);
         else if (event.type === "approval-delivery-failed") active.feed.approvalDeliveryFailed();
         else if (event.type === "complete") active.feed.complete();
-        else if (event.type === "failed") active.feed.fail(Error(event.code === APPROVAL_DELIVERY_FAILURE.code ? APPROVAL_DELIVERY_FAILURE.code : "AGENT_PROVIDER_FAILED"));
+        else if (event.type === "failed") active.feed.fail(Error([APPROVAL_DELIVERY_FAILURE.code, "AGENT_QUESTION_DELIVERY_FAILED"].includes(event.code) ? event.code : "AGENT_PROVIDER_FAILED"));
         else if (event.type === "stopped") active.feed.fail(Error("AGENT_TASK_STOPPED"));
       }
     } catch {
@@ -11089,18 +11489,26 @@ function createStdioBridge({ input = process.stdin, emit: emit2 = (value) => pro
     onTaskRequest(request) {
       emit2({ type: "managed-task-request", ...request });
     },
+    onSlash(request) {
+      emit2({ type: "slash", ...request });
+    },
+    onCommandCatalog(request) {
+      emit2({ type: "command-catalog-request", ...request });
+    },
     onMessage(request) {
       const feed = createReplyFeed(request.signal);
       cancelApprovals(active);
       active = { id: request.id, feed, request, approvals: /* @__PURE__ */ new Map() };
       request.signal.addEventListener("abort", () => emit2({ type: "cancel", requestId: request.id }), { once: true });
-      emit2({
+      if (request.nativeTurn) emit2({ type: "sent", nonce: request.nativeTurn.nonce });
+      else emit2({
         type: "message",
         requestId: request.id,
         text: request.text,
         conversationId: request.conversationId,
         senderIdentityId: request.senderIdentityId,
-        attachments: request.attachments || []
+        attachments: request.attachments || [],
+        ...request.slash ? { slash: true } : {}
       });
       return feed;
     },
@@ -11139,7 +11547,25 @@ try {
     else {
       const bridge = createStdioBridge({ signal: controller.signal });
       process.stdin.once("end", () => controller.abort());
-      const protectedPaths = [dirname2(resolve4(statePath)), ...option("--protected-root") ? [resolve4(option("--protected-root"))] : []];
+      const protectedRoot = option("--protected-root");
+      const protectedPaths = [dirname2(resolve4(statePath)), ...protectedRoot ? [resolve4(protectedRoot)] : []];
+      if (option("--provider") === "Hermes" && protectedRoot) {
+        const profile = dirname2(resolve4(protectedRoot));
+        for (const name of [
+          "config.yaml",
+          "gateway.json",
+          "auth.json",
+          "state.db",
+          "state.db-wal",
+          "state.db-shm",
+          "sessions",
+          "pairing",
+          "platforms/pairing",
+          "profiles",
+          "logs"
+        ])
+          protectedPaths.push(resolve4(profile, name));
+      }
       const connector = createAgentConnector({
         transport,
         store,
@@ -11148,6 +11574,7 @@ try {
         ...option("--provider") === "Hermes" && option("--received-root") ? { receivedDirectory: resolve4(option("--received-root")) } : {},
         streamReplies: option("--provider") === "Hermes",
         ...option("--provider") === "Hermes" && option("--protected-root") ? { invitationRoot: resolve4(option("--protected-root")) } : {},
+        ...option("--provider") === "Hermes" ? { onSlash: bridge.onSlash, onCommandCatalog: bridge.onCommandCatalog } : {},
         onMessage: bridge.onMessage,
         onAction: bridge.onAction,
         onTaskRequest: bridge.onTaskRequest,

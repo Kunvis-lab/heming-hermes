@@ -90,6 +90,7 @@ class HemingTeamAdapter(HemingReplyPresentation, BasePlatformAdapter):
                 continue
 
     async def connect(self, *, is_reconnect=False):
+        self._activity_loop = asyncio.get_running_loop()
         await self._refresh()
         if not self._watcher or self._watcher.done():
             self._watcher = asyncio.create_task(self._watch())
@@ -99,11 +100,31 @@ class HemingTeamAdapter(HemingReplyPresentation, BasePlatformAdapter):
         matches = [member for member in self._members.values() if member._running and member._session and str(chat_id) == member._session["conversationId"]]
         return matches[0] if len(matches) == 1 else None
 
+    def capture_commentary(self, chat_id, request_id, text):
+        loop = getattr(self, "_activity_loop", None)
+        if loop and not loop.is_closed():
+            loop.call_soon_threadsafe(lambda: self._capture_member_commentary(str(chat_id), str(request_id), text))
+
+    def _capture_member_commentary(self, chat_id, request_id, text):
+        member = self._recipient(chat_id)
+        if member:
+            member._record_commentary(chat_id, request_id, text)
+
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         member = self._recipient(chat_id)
         if not member:
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
         return await member.send(chat_id, content, reply_to=reply_to, metadata=metadata)
+
+    async def on_processing_start(self, event):
+        member = self._recipient(event.source.chat_id)
+        if member and event.message_id in member._native_slash_ids:
+            await member.on_processing_start(event)
+
+    async def on_processing_complete(self, event, outcome):
+        member = self._recipient(event.source.chat_id)
+        if member and (member._request or {}).get("nativeTurn") and member._request["requestId"] == event.message_id:
+            await member.on_processing_complete(event, outcome)
 
     async def edit_message(self, chat_id, message_id, content, *, finalize=False, metadata=None):
         member = self._recipient(chat_id)

@@ -18,6 +18,8 @@ from .setup import environment_defaults, interactive_setup, is_configured
 from .approval import ApprovalAlreadyPending, ApprovalCards, ApprovalDeliveryClosed
 from .work import WorkCards
 from .managed_tasks import ManagedTasks
+from .task_commands import deliver_side_reply, permitted_commands, side_reply
+from .slash import authorized_command, forward_running_command, forward_slash_confirmation, publish_catalog, send_slash_reply, slash_reply
 
 
 def extract_file_media(content, *, preview=False):
@@ -49,11 +51,14 @@ def extract_file_media(content, *, preview=False):
     return [(path, False) for path in unique], "".join(lines).strip()
 
 
-async def deliver_file_media(adapter, event, media_files, local_files, *, metadata, record_delivery, **_options):
-    # No image/audio/video dispatch, transcoding, parsing or opening on this channel.
+async def deliver_file_media(adapter, event, media_files, local_files, *, metadata, record_delivery,
+                             force_document_attachments=False, **_options):
+    # Use the same protected file transfer. Only explicit final video can get a preview.
     paths = dict.fromkeys([path for path, _ in media_files] + list(local_files))
     for path in paths:
-        result = await adapter.send_document(event.source.chat_id, path, metadata=metadata)
+        send = adapter.send_video if (not force_document_attachments and
+            Path(path).suffix.lower() in {".mp4", ".webm"}) else adapter.send_document
+        result = await send(event.source.chat_id, path, metadata=metadata)
         record_delivery(result)
         if not result.success:
             await adapter._notify_media_delivery_failure(event.source.chat_id, path, metadata=metadata)
@@ -77,8 +82,21 @@ class HemingReplyPresentation:
     def render_message_event(self, event, sink):
         from gateway.stream_events import Commentary
         if isinstance(event, Commentary):
+            chat_id, request_id = getattr(sink, "chat_id", None), getattr(sink, "_initial_reply_to_id", None)
+            if chat_id and request_id:
+                self.capture_commentary(chat_id, request_id, event.text)
             return
         return super().render_message_event(event, sink)
+
+    async def send_video(self, chat_id, video_path, caption=None, reply_to=None, metadata=None, **kwargs):
+        return await self.send_document(chat_id, video_path, caption=caption, reply_to=reply_to, metadata=metadata,
+                                        **{**kwargs, "media_kind": "video"})
+
+    async def send_image_file(self, chat_id, image_path, caption=None, reply_to=None, metadata=None, **kwargs):
+        return await self.send_document(chat_id, image_path, caption=caption, reply_to=reply_to, metadata=metadata, **kwargs)
+
+    async def send_voice(self, chat_id, audio_path, caption=None, reply_to=None, metadata=None, **kwargs):
+        return await self.send_document(chat_id, audio_path, caption=caption, reply_to=reply_to, metadata=metadata, **kwargs)
 
 
 class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
@@ -107,6 +125,7 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
         self._actions = set()
         self._work = WorkCards(self)
         self._request_event = None
+        self._native_slash_ids = {}
         self._managed = ManagedTasks(self)
 
     def _mark_connected(self, **kwargs):
@@ -136,6 +155,7 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             return True
         self._session = None
         self._clear_request()
+        self._activity_loop = asyncio.get_running_loop()
         args = ["bridge", "--provider", "Hermes", "--state", str(self.state_path)]
         args.extend(["--protected-root", str(Path(get_hermes_home()) / "heming")])
         args.extend(["--received-root", str(Path(get_hermes_home()) / "cache" / "heming-attachments")])
@@ -199,7 +219,29 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
                             media["media_text_inlined"] = [False for _ in attachments]
                     self._request_event = MessageEvent(text=event["text"], message_type=kind,
                         source=source, message_id=event["requestId"], **media)
+                    if hasattr(self._request_event, "allow_gateway_control"):
+                        self._request_event.allow_gateway_control = event.get("slash") is True
+                    if event.get("slash") is True:
+                        self._canonicalize(source)
+                        confirmation = await forward_slash_confirmation(self, self._request_event)
+                        if confirmation is not None or not authorized_command(self, self._request_event):
+                            self._parts[event["requestId"]] = str(confirmation) if confirmation is not None else "当前会话无权使用这条指令，或需先完成追问／审批。指令未执行。"
+                            await self._snapshot()
+                            await self._write({"type": "complete", "requestId": event["requestId"]})
+                            self._clear_request()
+                            continue
                     await self.handle_message(self._request_event)
+                elif event["type"] == "command-catalog-request":
+                    try:
+                        catalog = publish_catalog(self, event)
+                    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
+                        catalog = None
+                    if catalog:
+                        await self._write(catalog)
+                elif event["type"] == "slash" and len(self._actions) < 24:
+                    task = asyncio.create_task(forward_running_command(self, event))
+                    self._actions.add(task)
+                    task.add_done_callback(self._action_finished)
                 elif event["type"] == "managed-task-request":
                     task = asyncio.create_task(self._managed.handle(event))
                     self._actions.add(task)
@@ -288,10 +330,28 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         if not self._session or str(chat_id) != self._session["conversationId"]:
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
-        if reply_to and (not self._request or str(reply_to) != self._request["requestId"]):
-            return SendResult(success=False, error="HEMING_REPLY_CLOSED")
         if (metadata or {}).get("is_approval_prompt"):
             return SendResult(success=False, error="HEMING_APPROVAL_REQUIRES_NATIVE_CARD")
+        routed_slash = slash_reply.get()
+        request = self._request or {}
+        if (routed_slash and not (request.get("nativeTurn") and request["requestId"] == routed_slash[2]) and
+                (not reply_to or str(reply_to) == routed_slash[2])):
+            try:
+                result = await send_slash_reply(self, routed_slash, content)
+                return SendResult(success=True, message_id=result.get("messageId"))
+            except (RuntimeError, asyncio.TimeoutError, TypeError, ValueError):
+                return SendResult(success=False, error="HEMING_DELIVERY_FAILED")
+        routed_side = side_reply.get()
+        if routed_side:
+            if routed_side[0] is not self or reply_to or (metadata or {}).get("is_approval_prompt"):
+                return SendResult(success=False, error="HEMING_SIDE_RECIPIENT_MISMATCH")
+            try:
+                result = await deliver_side_reply(self, routed_side[1], content)
+                return SendResult(success=True, message_id=result.get("messageId"))
+            except (RuntimeError, asyncio.TimeoutError, TypeError, ValueError):
+                return SendResult(success=False, error="HEMING_DELIVERY_FAILED")
+        if reply_to and (not self._request or str(reply_to) != self._request["requestId"]):
+            return SendResult(success=False, error="HEMING_REPLY_CLOSED")
         if (metadata or {}).get("job_id"):
             # Cron delivery can happen while a normal chat answer is buffered.
             # It must never be appended to that unrelated answer.
@@ -325,6 +385,45 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
         await self._write({"type": "snapshot", "requestId": self._request["requestId"],
             "text": "\n\n".join(self._parts.values())})
 
+    def capture_commentary(self, chat_id, request_id, text):
+        # The native stream dispatcher may call us from Hermes' worker thread.
+        loop = getattr(self, "_activity_loop", None)
+        if loop and request_id and text and not loop.is_closed():
+            loop.call_soon_threadsafe(lambda: self._record_commentary(str(chat_id), str(request_id), text))
+
+    def _record_commentary(self, chat_id, request_id, text):
+        request = self._request
+        if not self._session or chat_id != self._session["conversationId"] or not request or request_id != request["requestId"]:
+            return
+        activity = request.setdefault("activity", [])
+        if len(text) > 32_768:
+            return
+        # Only outward-facing Hermes Commentary, never reasoning callbacks or tool arguments.
+        try:
+            from agent.redact import redact_for_egress
+        except ImportError:
+            return  # Older Hermes without the egress scrubber must not send raw commentary.
+        text = re.sub(r"<(think|analysis|reasoning)\b[^>]*>.*?(?:</\1\s*>|$)", "", text, flags=re.I | re.S)
+        _, prose = extract_file_media(text)
+        _, prose = extract_file_media(prose, preview=True)
+        changed = False
+        if prose and len(activity) < 3:
+            prose = re.sub(r"(?<![\w:/])/(?:[^/\s`]+/)+[^\s`]+", "[本机路径]", prose)
+            summary = redact_for_egress(prose, urls=True).strip()[:360]
+            if summary and summary not in activity:
+                activity.append(summary)
+                changed = True
+        if not changed:
+            return
+        task = asyncio.create_task(self._publish_commentary(request_id, list(activity)))
+        self._actions.add(task)
+        task.add_done_callback(self._action_finished)
+
+    async def _publish_commentary(self, request_id, activity):
+        if not self._request or request_id != self._request["requestId"]:
+            return
+        await self._write({"type": "task", "requestId": request_id, "update": {"activity": activity}})
+
     async def send_stream_frame(self, content, *, chat_id, reply_to=None, turn_id=None, finalize=False):
         if (not self._session or not self._request or str(chat_id) != self._session["conversationId"]
                 or not turn_id or str(reply_to) != self._request["requestId"] or len(content) > 131_072):
@@ -346,14 +445,18 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             return SendResult(success=False, error="HEMING_RECIPIENT_MISMATCH")
         if reply_to and (not self._request or str(reply_to) != self._request["requestId"]):
             return SendResult(success=False, error="HEMING_REPLY_CLOSED")
-        if (metadata or {}).get("_interim_send"):
+        process = bool((metadata or {}).get("_interim_send"))
+        if process:
             return SendResult(success=False, error="HEMING_FILE_FINAL_ONLY")
         receipt = None
         try:
             path = Path(file_path).expanduser().absolute()
             request_id = "" if (metadata or {}).get("job_id") else (self._request or {}).get("requestId", "")
+            video = kwargs.get("media_kind") == "video"
             key = (str(chat_id), request_id, str((metadata or {}).get("job_id", "")),
-                   str(path), str(file_name or ""), str(caption or ""), path.stat().st_mtime_ns)
+                   str(path), str(file_name or ""), str(caption or ""), process, path.stat().st_mtime_ns)
+            if video:
+                key += ("video",)
             if key not in self._file_deliveries and len(self._file_deliveries) >= 128:
                 completed = next((old for old, value in self._file_deliveries.items() if value["settled"]), None)
                 if completed is None:
@@ -364,7 +467,8 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
             delivery_id = receipt["id"]
             result = await self._bridge_send({"type": "send-file", "conversationId": str(chat_id),
                 "filePath": str(path), "fileName": file_name or kwargs.get("filename"),
-                "caption": caption or "", "requestId": request_id, "deliveryId": delivery_id}, timeout=300)
+                "caption": caption or "", "requestId": request_id, "deliveryId": delivery_id,
+                **({"mediaKind": "video"} if video else {})}, timeout=300)
             return SendResult(success=True, message_id=result.get("messageId"))
         except (OSError, RuntimeError, ValueError, TypeError, asyncio.TimeoutError):
             # Never echo an internal absolute path, file contents or provider exception.
@@ -403,18 +507,41 @@ class HemingAdapter(HemingReplyPresentation, BasePlatformAdapter):
                 if request.get("approvalDeliveryFailed"):
                     await self._write({"type": "failed", "requestId": request["requestId"],
                         "code": "AGENT_APPROVAL_DELIVERY_FAILED"})
+                elif request.get("questionDeliveryFailed"):
+                    await self._write({"type": "failed", "requestId": request["requestId"],
+                        "code": "AGENT_QUESTION_DELIVERY_FAILED"})
                 else:
-                    if outcome.value == "success":
+                    stopped = outcome.value == "cancelled" or any(getattr(message, "_interrupt_accepted", False)
+                                                                    for message in request.get("nativeInterrupts", []))
+                    if outcome.value == "success" and not stopped:
                         await self._snapshot()
-                    await self._write({"type": "complete" if outcome.value == "success" else "failed",
+                    await self._write({"type": "stopped" if stopped else "complete" if outcome.value == "success" else "failed",
                         "requestId": request["requestId"]})
             finally:
                 if self._request is request:
                     self._clear_request()
 
     async def on_processing_start(self, event):
+        if event.message_id in self._native_slash_ids and not event.get_command():
+            self._native_slash_ids.pop(event.message_id, None)
+            session = self._session
+            if (not session or str(event.source.chat_id) != session["conversationId"] or
+                    str(event.source.user_id) != str(session["ownerIdentityId"])):
+                return
+            try:
+                await self._bridge_send({"type": "adopt-native-turn", "conversationId": session["conversationId"],
+                                         "requestId": event.message_id}, timeout=12)
+            except (RuntimeError, OSError, asyncio.TimeoutError):
+                await self._write({"type": "cancel-native-turn", "requestId": event.message_id})
+                return
+            if self._session is not session or self._request:
+                await self._write({"type": "cancel-native-turn", "requestId": event.message_id})
+                return
+            self._request = {"requestId": event.message_id, "conversationId": session["conversationId"], "nativeTurn": True}
+            self._request_event = event
         if self._request and event.message_id == self._request["requestId"]:
-            await self._work.status("working", hasattr(self, "cancel_session_processing"))
+            await self._work.status("working", hasattr(self, "cancel_session_processing"),
+                                    permitted_commands(self, event))
 
     async def send_clarify(self, chat_id, question, choices, clarify_id, session_key, metadata=None):
         try:

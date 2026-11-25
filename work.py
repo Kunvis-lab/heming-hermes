@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from gateway.platforms.event import MessageEvent, MessageType
+from .task_commands import dispatch_task_command
 
 
 class WorkCards:
@@ -13,17 +14,19 @@ class WorkCards:
         self.stopping = set()
         self.lock = asyncio.Lock()
 
-    async def status(self, status, can_stop=False):
+    async def status(self, status, can_stop=False, task_commands=None):
         request = self.adapter._request
         if request:
             await self.adapter._bridge_send({"type": "task", "requestId": request["requestId"],
-                "update": {"status": status, "canStop": can_stop}})
+                "update": {"status": status, "canStop": can_stop,
+                    **({"taskCommands": task_commands} if task_commands is not None else {})}})
 
     async def question(self, chat_id, question, choices, clarify_id, session_key):
         from tools import clarify_gateway as cg
         a = self.adapter
         if not a._request or not a._session or str(chat_id) != a._session["conversationId"]:
             raise RuntimeError("HEMING_TASK_CLOSED")
+        request = a._request
         with cg._lock:
             entry = cg._entries.get(clarify_id)
             if not entry or entry.session_key != session_key or entry.question != question or entry.event.is_set():
@@ -36,13 +39,18 @@ class WorkCards:
         timeout = min(600, timeout) if timeout > 0 else 600
         card = {"version": 1, "kind": "question", "id": str(clarify_id),
             "requestMessageId": a._request["requestId"], "ownerIdentityId": str(a._session["ownerIdentityId"]),
-            "question": str(question), "choices": list(choices or []), "multiSelect": multi,
+            "question": str(question), "choices": list(choices or []), "multiSelect": multi, "answerFormat": "choices-v1",
             "status": "pending", "revision": 0,
             "expiresAt": (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat()}
         if clarify_id in self.records:
             raise RuntimeError("HEMING_QUESTION_DUPLICATE")
         record = self.records[clarify_id] = {"card": card, "session": session_key, "message": None}
-        result = await a._bridge_send({"type": "question", "requestId": card["requestMessageId"], "card": card})
+        try:
+            result = await a._bridge_send({"type": "question", "requestId": card["requestMessageId"], "card": card})
+        except (RuntimeError, asyncio.TimeoutError):
+            self.records.pop(clarify_id, None)
+            request["questionDeliveryFailed"] = True
+            raise
         record["message"] = result["messageId"]
         await self.status("waiting", True)
         return record["message"]
@@ -68,6 +76,15 @@ class WorkCards:
             if event.get("kind") == "task" and event.get("action") == "stop":
                 await self.stop(request["requestId"])
                 return
+            if event.get("kind") == "task" and event.get("commandId"):
+                accepted = False
+                try:
+                    accepted = await asyncio.wait_for(dispatch_task_command(a, event), 8)
+                except Exception:
+                    pass  # Return a bounded failure; never forward a Gateway exception.
+                await a._write({"type": "task-command-result", "requestId": request["requestId"],
+                    "commandId": event["commandId"], "accepted": accepted})
+                return
             if event.get("kind") != "question" or event.get("action") != "answer":
                 return
             record = self.records.get(str(event.get("interactionId")))
@@ -77,16 +94,10 @@ class WorkCards:
             if card["requestMessageId"] != request["requestId"] or datetime.now(timezone.utc) >= datetime.fromisoformat(card["expiresAt"]):
                 await self.retire(card["id"])
                 return
-            answer = event.get("answer", "")
-            if not isinstance(answer, str) or not answer.strip() or len(answer) > 2000:
+            answer = format_answer(card, event.get("answer"))
+            if answer is None:
                 return
-            if card["multiSelect"] and answer.startswith("["):
-                try:
-                    values = json.loads(answer)
-                    if not isinstance(values, list) or not values or len(set(values)) != len(values) or any(value not in card["choices"] for value in values):
-                        return
-                except (ValueError, TypeError):
-                    return
+            native, display = answer
             from tools import clarify_gateway as cg
             with cg._lock:
                 entry = cg._entries.get(card["id"])
@@ -94,10 +105,10 @@ class WorkCards:
             if not valid:
                 await self.retire(card["id"])
                 return
-            if cg.resolve_gateway_clarify(card["id"], answer):
+            if cg.resolve_gateway_clarify(card["id"], native):
                 # Completion takes this same lock: the resolver wins before the
                 # UI says answered, and its ACK precedes the final output.
-                await self.retire(card["id"], answer)
+                await self.retire(card["id"], display)
                 await self.status("working", True)
             else:
                 await self.retire(card["id"])
@@ -148,3 +159,39 @@ class WorkCards:
     def reset(self):
         self.records.clear()
         self.stopping.clear()
+
+
+def format_answer(card, answer):
+    """Map a verified choice position to Hermes' exact registered label."""
+    choices, multi = card["choices"], card["multiSelect"]
+    if isinstance(answer, str):
+        if not answer.strip() or len(answer) > 2000:
+            return None
+        if multi and answer.startswith("["):
+            try:
+                values = json.loads(answer)
+                if (not isinstance(values, list) or not values or
+                        any(not isinstance(value, str) or value not in choices for value in values) or
+                        len(set(values)) != len(values)):
+                    return None
+            except (ValueError, TypeError):
+                return None
+        return answer, answer
+    if not isinstance(answer, dict):
+        return None
+    indices, note = answer.get("selections"), answer.get("note")
+    if (not isinstance(indices, list) or not isinstance(note, str) or len(note) > 2000 or
+            any(type(index) is not int or index < 0 or index >= len(choices) for index in indices) or
+            len(set(indices)) != len(indices) or (not multi and len(indices) > 1)):
+        return None
+    note = note.strip()
+    picked = [choices[index] for index in sorted(indices)]
+    if not picked and not note:
+        return None
+    # 0.23.2 accepts a JSON array for multi-select. A supplement is a separate
+    # free-text item, never wrapped into an offered label.
+    extra = f"补充说明：{note}" if note and picked else note
+    parts = picked + ([extra] if extra else [])
+    display = "\n".join(parts)
+    native = json.dumps(parts, ensure_ascii=False) if multi else display
+    return native, display[:1000]
